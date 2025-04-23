@@ -1,0 +1,12 @@
+.results {
+  display: block;
+  max-width: 800px;
+  margin: 30px auto;
+  padding: 0 20px;
+}
+
+@media (max-width: 768px) {
+  .results {
+    padding: 0 10px;
+  }
+}

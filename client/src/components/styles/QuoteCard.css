@@ -1,0 +1,88 @@
+.quote-card {
+  background: var(--card-bg);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  padding: 1.5rem 1.8rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.quote-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.quote-card.superman {
+  border-left: 4px solid var(--superman-color);
+}
+
+.quote-card.lila-amrita {
+  border-left: 4px solid var(--lila-amrita-color);
+}
+
+.quote-card.sb {
+  border-left: 4px solid var(--sb-color);
+}
+
+.quote-card.cc {
+  border-left: 4px solid var(--cc-color);
+}
+
+.quote-card.bgatis {
+  border-left: 4px solid var(--bgatis-color);
+}
+
+.statement {
+  font-size: 1.15rem;
+  margin-bottom: 0.8rem;
+  line-height: 1.7;
+  font-weight: 300;
+  font-family: 'Lora', serif;
+}
+
+.ref {
+  font-size: 0.95rem;
+  color: #bbb;
+  font-style: italic;
+  font-family: 'Lora', serif;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background-color: rgba(30, 30, 30, 0.8);
+  color: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  backdrop-filter: blur(5px);
+}
+
+.copy-btn:hover {
+  transform: scale(1.05);
+}
+
+.quote-card:hover .copy-btn {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .quote-card {
+    padding: 1.2rem 1.5rem;
+  }
+
+  .statement {
+    font-size: 1.05rem;
+  }
+  
+  .ref {
+    font-size: 0.9rem;
+  }
+}

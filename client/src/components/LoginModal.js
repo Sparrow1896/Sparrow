@@ -28,7 +28,10 @@ const LoginModal = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    login(formData.username, formData.password);
+    login({
+      username: formData.username,
+      password: formData.password
+    });
   };
 
   const handleClose = () => {
@@ -46,7 +49,6 @@ const LoginModal = () => {
         </span>
         <h2>Login</h2>
         {error && <div className="error-message">{error}</div>}
-        }
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="username">Username</label>

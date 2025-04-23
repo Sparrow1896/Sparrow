@@ -106,6 +106,66 @@
   box-shadow: 0 4px 12px rgba(255, 213, 79, 0.3);
 }
 
+/* Collection selector styles */
+.collection-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.collection-option {
+  padding: 10px 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.collection-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.collection-option.selected {
+  border-color: var(--accent);
+  background: rgba(255, 213, 79, 0.1);
+  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.2);
+}
+
+/* Collection color options */
+.collection-option.superman-option.selected {
+  border-color: var(--superman-color);
+  background: rgba(255, 105, 180, 0.1);
+  box-shadow: 0 0 0 2px rgba(255, 105, 180, 0.2);
+}
+
+.collection-option.lila-amrita-option.selected {
+  border-color: var(--lila-amrita-color);
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.2);
+}
+
+.collection-option.sb-option.selected {
+  border-color: var(--sb-color);
+  background: rgba(205, 133, 63, 0.1);
+  box-shadow: 0 0 0 2px rgba(205, 133, 63, 0.2);
+}
+
+.collection-option.cc-option.selected {
+  border-color: var(--cc-color);
+  background: rgba(0, 204, 102, 0.1);
+  box-shadow: 0 0 0 2px rgba(0, 204, 102, 0.2);
+}
+
+.collection-option.bgatis-option.selected {
+  border-color: var(--bgatis-color);
+  background: rgba(255, 51, 51, 0.1);
+  box-shadow: 0 0 0 2px rgba(255, 51, 51, 0.2);
+}
+
 .error-message {
   background-color: rgba(255, 0, 0, 0.1);
   color: #ff6b6b;

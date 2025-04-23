@@ -29,9 +29,15 @@ router.post('/login', async (req, res) => {
     }
 
     // Create token
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error('JWT_SECRET is not defined in environment variables');
+      return res.status(500).json({ msg: 'Server configuration error' });
+    }
+    
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: 3600 } // 1 hour
     );
 

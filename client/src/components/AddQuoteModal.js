@@ -34,7 +34,7 @@ const AddQuoteModal = () => {
     const tags = [];
     if (formData.collection !== 'Mix') {
       const collectionTag = getCollectionTag(formData.collection);
-      if (!tags.includes(collectionTag)) {
+      if (collectionTag && !tags.includes(collectionTag)) {
         tags.push(collectionTag);
       }
     }
@@ -46,13 +46,17 @@ const AddQuoteModal = () => {
       }
     });
     
+    // Process statement text to properly handle line breaks
+    // This ensures <br> tags are preserved in the database
+    const processedStatement = formData.statement.trim();
+    
     const quoteData = {
       ref: formData.reference,
       speaker: formData.speaker,
       collection: formData.collection,
       statements: [
         {
-          statement: formData.statement,
+          statement: processedStatement,
           tags,
           keywords
         }
@@ -84,6 +88,18 @@ const AddQuoteModal = () => {
   };
 
   if (!isAddQuoteModalOpen) return null;
+
+  // Helper function to get collection color class
+  const getCollectionColorClass = (collection) => {
+    switch(collection) {
+      case 'Superman': return 'superman-option';
+      case 'The Empowered Ācārya': return 'lila-amrita-option';
+      case 'Śrīmad-Bhāgavatam': return 'sb-option';
+      case 'Śrī Caitanya-caritāmṛta': return 'cc-option';
+      case 'Bhagavad-gītā As It Is': return 'bgatis-option';
+      default: return '';
+    }
+  };
 
   return (
     <div className="modal">
@@ -126,19 +142,17 @@ const AddQuoteModal = () => {
           </div>
           <div className="form-group">
             <label htmlFor="collection">Collection</label>
-            <select 
-              id="collection"
-              value={formData.collection}
-              onChange={handleChange}
-              required
-            >
-              <option value="Mix">General</option>
-              <option value="Superman">Superman</option>
-              <option value="The Empowered Ācārya">The Empowered Ācārya</option>
-              <option value="Śrīmad-Bhāgavatam">Śrīmad Bhāgavatam</option>
-              <option value="Śrī Caitanya-caritāmṛta">Śrī Caitanya-caritāmṛta</option>
-              <option value="Bhagavad-gītā As It Is">Bhagavad-gītā As It Is</option>
-            </select>
+            <div className="collection-selector">
+              {['Mix', 'Superman', 'The Empowered Ācārya', 'Śrīmad-Bhāgavatam', 'Śrī Caitanya-caritāmṛta', 'Bhagavad-gītā As It Is'].map(collection => (
+                <div 
+                  key={collection}
+                  className={`collection-option ${getCollectionColorClass(collection)} ${formData.collection === collection ? 'selected' : ''}`}
+                  onClick={() => setFormData({...formData, collection})}
+                >
+                  {collection}
+                </div>
+              ))}
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="keywords">Keywords (comma separated)</label>

@@ -76,26 +76,15 @@ export const AuthProvider = ({ children }) => {
     if (localStorage.token) {
       // Set auth token
       setAuthToken(localStorage.token);
-      
+
       try {
-        // Get token from localStorage
-        const token = localStorage.getItem('token');
-        
-        // Parse the token to get user info
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(
-          atob(base64)
-            .split('')
-            .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-            .join('')
-        );
-        
-        const user = JSON.parse(jsonPayload);
-        
+        // Instead of parsing the token client-side, make a request to the server
+        // to validate the token and get the user data
+        const res = await axios.get('http://localhost:5000/api/auth');
+
         dispatch({
           type: 'USER_LOADED',
-          payload: user
+          payload: res.data
         });
       } catch (err) {
         dispatch({ type: 'AUTH_ERROR' });
@@ -113,22 +102,23 @@ export const AuthProvider = ({ children }) => {
 
     try {
       dispatch({ type: 'USER_LOADING' });
-      const res = await axios.post('/api/auth', formData, config);
-      
+      // Use the full URL with the base URL
+      const res = await axios.post('http://localhost:5000/api/users/login', formData, config);
+
       dispatch({
         type: 'LOGIN_SUCCESS',
         payload: res.data
       });
-      
+
       loadUser();
     } catch (err) {
       console.error('Login error:', err.response ? err.response.data : err.message);
-      
+
       dispatch({
         type: 'LOGIN_FAIL',
         payload: err.response ? err.response.data.msg : 'Server error'
       });
-      
+
       // Clear error after 5 seconds
       setTimeout(() => dispatch({ type: 'CLEAR_ERRORS' }), 5000);
     }

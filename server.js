@@ -10,6 +10,7 @@ const User = require('./models/User');
 // Routes
 const quotesRoutes = require('./routes/quotes');
 const usersRoutes = require('./routes/users');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
@@ -86,6 +87,7 @@ async function initializeDatabase() {
 // Use Routes
 app.use('/api/quotes', quotesRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/auth', authRoutes);
 
 // Serve static assets if in production
 if (process.env.NODE_ENV === 'production') {

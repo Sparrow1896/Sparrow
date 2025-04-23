@@ -8,30 +8,36 @@ const QuoteCard = ({ quote }) => {
 
   // Determine the appropriate class based on tags
   const getCardClass = () => {
+    // First check for specific quotecard tags with strict matching
     if (quote.tags && Array.isArray(quote.tags)) {
-      // Check for specific tags with strict matching
+      // Check for Bhagavad-gītā As It Is tags
       if (quote.tags.some(tag => 
         tag.toLowerCase() === "quotecard:bgatis" || 
-        tag.toLowerCase() === "quote-card:bgatis" ||
         tag.toLowerCase() === "quotecard:bgats"
       )) {
         return "bgatis";
-      } else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:sb" || 
-        tag.toLowerCase() === "quote-card:sb"
+      } 
+      // Check for Śrīmad-Bhāgavatam tags
+      else if (quote.tags.some(tag => 
+        tag.toLowerCase() === "quotecard:sb"
       )) {
         return "sb";
-      } else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:cc" || 
-        tag.toLowerCase() === "quote-card:cc"
+      } 
+      // Check for Śrī Caitanya-caritāmṛta tags
+      else if (quote.tags.some(tag => 
+        tag.toLowerCase() === "quotecard:cc"
       )) {
         return "cc";
-      } else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:lila-amrita" || 
-        tag.toLowerCase() === "quote-card:lila-amrita"
+      } 
+      // Check for The Empowered Ācārya tags
+      else if (quote.tags.some(tag => 
+        tag.toLowerCase() === "quotecard:lila-amrita"
       )) {
         return "lila-amrita";
-      } else if (quote.tags.some(tag => 
+      } 
+      // Check for Superman tags
+      else if (quote.tags.some(tag => 
+        tag.toLowerCase() === "quotecard:superman" ||
         tag.toLowerCase() === "superman"
       )) {
         return "superman";
@@ -45,6 +51,15 @@ const QuoteCard = ({ quote }) => {
       if (quote.scriptureCode === "CC") return "cc";
     }
     
+    // If the quote has a collection property, use that
+    if (quote.collection) {
+      if (quote.collection === "Bhagavad-gītā As It Is") return "bgatis";
+      if (quote.collection === "Śrīmad-Bhāgavatam") return "sb";
+      if (quote.collection === "Śrī Caitanya-caritāmṛta") return "cc";
+      if (quote.collection === "The Empowered Ācārya") return "lila-amrita";
+      if (quote.collection === "Superman") return "superman";
+    }
+    
     return ""; // Default class
   };
 
@@ -53,9 +68,14 @@ const QuoteCard = ({ quote }) => {
     copyToClipboard(`"${quote.statement}" — ${quote.ref}`);
   };
 
+  // Function to safely convert <br> tags to actual line breaks
+  const formatStatement = (text) => {
+    return { __html: text.replace(/<br>/g, '<br />') };
+  };
+
   return (
     <div className={`quote-card ${getCardClass()}`}>
-      <div className="statement">{quote.statement}</div>
+      <div className="statement" dangerouslySetInnerHTML={formatStatement(quote.statement)}></div>
       <div className="ref">— {quote.ref}</div>
       <button className="copy-btn" title="Copy quote" onClick={handleCopy}>
         <FaCopy />

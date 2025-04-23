@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useReducer, useContext } from 'react';
 import axios from 'axios';
+import { fetchAllQuotes as fetchQuotesService } from '../utils/quoteService';
 import { toast } from 'react-toastify';
 
 // Create context
@@ -126,34 +127,33 @@ export const QuoteProvider = ({ children }) => {
   const [state, dispatch] = useReducer(quoteReducer, initialState);
 
   // Fetch quotes
-  // Fetch quotes function
   const fetchQuotes = async () => {
     try {
       dispatch({ type: 'SET_LOADING' });
-      
-      // Make the API call to fetch quotes
-      const res = await axios.get('/api/quotes');
-      
+
+      // Use the service to fetch quotes
+      const data = await fetchQuotesService();
+
       // Log the response to help with debugging
-      console.log('Quotes fetched:', res.data.length);
-      
+      console.log('Quotes fetched:', data.length);
+
       // Dispatch success action with the fetched quotes
       dispatch({
         type: 'FETCH_QUOTES_SUCCESS',
-        payload: res.data
+        payload: data
       });
-      
+
       // Process the quotes to create the flat structure
-      processQuotes(res.data);
+      processQuotes(data);
     } catch (err) {
       console.error('Error fetching quotes:', err);
-      
+
       // Dispatch failure action with the error message
       dispatch({
         type: 'FETCH_QUOTES_FAILURE',
         payload: err.response?.data?.msg || 'Error fetching quotes'
       });
-      
+
       // Show error toast
       toast.error(err.response?.data?.msg || 'Error fetching quotes');
     }
@@ -309,37 +309,43 @@ export const QuoteProvider = ({ children }) => {
 
       // Then filter by the active filter topics
       results = filteredQuotes.filter(quote => {
-        // Check if quote has tags that match any active filter
-        if (quote.tags && Array.isArray(quote.tags)) {
-          return Array.from(updatedFilters).some(filter => {
-            if (filter === "superman") {
-              return quote.tags.some(tag => tag.toLowerCase().includes("superman"));
-            } else if (filter === "lila-amrita") {
+        // Check if quote has tags or has a scripture code that matches any active filter
+        return Array.from(updatedFilters).some(filter => {
+          if (filter === "superman" && quote.tags) {
+            return quote.tags.some(tag => tag.toLowerCase() === "superman");
+          } else if (filter === "lila-amrita" && quote.tags) {
+            return quote.tags.some(tag =>
+              tag.toLowerCase() === "quotecard:lila-amrita" ||
+              tag.toLowerCase() === "quote-card:lila-amrita"
+            );
+          } else if (filter === "sb") {
+            if (quote.tags) {
               return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:lila-amrita") ||
-                tag.toLowerCase().includes("quote-card:lila-amrita")
+                tag.toLowerCase() === "quotecard:sb" ||
+                tag.toLowerCase() === "quote-card:sb"
               );
-            } else if (filter === "sb") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:sb") ||
-                tag.toLowerCase().includes("quote-card:sb")
-              ) || quote.scriptureCode === "SB";
-            } else if (filter === "cc") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:cc") ||
-                tag.toLowerCase().includes("quote-card:cc")
-              ) || quote.scriptureCode === "CC";
-            } else if (filter === "bgatis") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:bgatis") ||
-                tag.toLowerCase().includes("quote-card:bgatis") ||
-                tag.toLowerCase().includes("quotecard:bgats")
-              ) || quote.scriptureCode === "BG";
             }
-            return false;
-          });
-        }
-        return false;
+            return quote.scriptureCode === "SB";
+          } else if (filter === "cc") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:cc" ||
+                tag.toLowerCase() === "quote-card:cc"
+              );
+            }
+            return quote.scriptureCode === "CC";
+          } else if (filter === "bgatis") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:bgatis" ||
+                tag.toLowerCase() === "quote-card:bgatis" ||
+                tag.toLowerCase() === "quotecard:bgats"
+              );
+            }
+            return quote.scriptureCode === "BG";
+          }
+          return false;
+        });
       });
     }
 
@@ -390,37 +396,43 @@ export const QuoteProvider = ({ children }) => {
 
       // Then filter by the active filter topics
       return filteredQuotes.filter(quote => {
-        // Check if quote has tags that match any active filter
-        if (quote.tags && Array.isArray(quote.tags)) {
-          return Array.from(activeFilters).some(filter => {
-            if (filter === "superman") {
-              return quote.tags.some(tag => tag.toLowerCase().includes("superman"));
-            } else if (filter === "lila-amrita") {
+        // Check if quote has tags or has a scripture code that matches any active filter
+        return Array.from(activeFilters).some(filter => {
+          if (filter === "superman" && quote.tags) {
+            return quote.tags.some(tag => tag.toLowerCase() === "superman");
+          } else if (filter === "lila-amrita" && quote.tags) {
+            return quote.tags.some(tag =>
+              tag.toLowerCase() === "quotecard:lila-amrita" ||
+              tag.toLowerCase() === "quote-card:lila-amrita"
+            );
+          } else if (filter === "sb") {
+            if (quote.tags) {
               return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:lila-amrita") ||
-                tag.toLowerCase().includes("quote-card:lila-amrita")
+                tag.toLowerCase() === "quotecard:sb" ||
+                tag.toLowerCase() === "quote-card:sb"
               );
-            } else if (filter === "sb") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:sb") ||
-                tag.toLowerCase().includes("quote-card:sb")
-              ) || quote.scriptureCode === "SB";
-            } else if (filter === "cc") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:cc") ||
-                tag.toLowerCase().includes("quote-card:cc")
-              ) || quote.scriptureCode === "CC";
-            } else if (filter === "bgatis") {
-              return quote.tags.some(tag =>
-                tag.toLowerCase().includes("quotecard:bgatis") ||
-                tag.toLowerCase().includes("quote-card:bgatis") ||
-                tag.toLowerCase().includes("quotecard:bgats")
-              ) || quote.scriptureCode === "BG";
             }
-            return false;
-          });
-        }
-        return false;
+            return quote.scriptureCode === "SB";
+          } else if (filter === "cc") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:cc" ||
+                tag.toLowerCase() === "quote-card:cc"
+              );
+            }
+            return quote.scriptureCode === "CC";
+          } else if (filter === "bgatis") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:bgatis" ||
+                tag.toLowerCase() === "quote-card:bgatis" ||
+                tag.toLowerCase() === "quotecard:bgats"
+              );
+            }
+            return quote.scriptureCode === "BG";
+          }
+          return false;
+        });
       });
     }
   };
@@ -436,11 +448,44 @@ export const QuoteProvider = ({ children }) => {
 
     let quotesToSearch = state.flatQuotes;
     if (state.filters.activeFilters.size > 0) {
-      quotesToSearch = state.flatQuotes.filter(quote =>
-        quote.topics && quote.topics.some(topic =>
-          state.filters.activeFilters.has(topic)
-        )
-      );
+      quotesToSearch = state.flatQuotes.filter(quote => {
+        return Array.from(state.filters.activeFilters).some(filter => {
+          if (filter === "superman" && quote.tags) {
+            return quote.tags.some(tag => tag.toLowerCase() === "superman");
+          } else if (filter === "lila-amrita" && quote.tags) {
+            return quote.tags.some(tag =>
+              tag.toLowerCase() === "quotecard:lila-amrita" ||
+              tag.toLowerCase() === "quote-card:lila-amrita"
+            );
+          } else if (filter === "sb") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:sb" ||
+                tag.toLowerCase() === "quote-card:sb"
+              );
+            }
+            return quote.scriptureCode === "SB";
+          } else if (filter === "cc") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:cc" ||
+                tag.toLowerCase() === "quote-card:cc"
+              );
+            }
+            return quote.scriptureCode === "CC";
+          } else if (filter === "bgatis") {
+            if (quote.tags) {
+              return quote.tags.some(tag =>
+                tag.toLowerCase() === "quotecard:bgatis" ||
+                tag.toLowerCase() === "quote-card:bgatis" ||
+                tag.toLowerCase() === "quotecard:bgats"
+              );
+            }
+            return quote.scriptureCode === "BG";
+          }
+          return false;
+        });
+      });
     }
 
     const scriptureReferencePattern = /^(bg|sb|cc|iso)\s*(\d+)(?:\.(\d+))?$/i;

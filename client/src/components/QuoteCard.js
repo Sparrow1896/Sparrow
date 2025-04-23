@@ -9,30 +9,30 @@ const QuoteCard = ({ quote }) => {
   // Determine the appropriate class based on tags
   const getCardClass = () => {
     if (quote.tags && Array.isArray(quote.tags)) {
-      // Check for specific tags with more flexible matching
+      // Check for specific tags with strict matching
       if (quote.tags.some(tag => 
-        tag.toLowerCase().includes("quotecard:bgatis") || 
-        tag.toLowerCase().includes("quote-card:bgatis") ||
-        tag.toLowerCase().includes("quotecard:bgats")
+        tag.toLowerCase() === "quotecard:bgatis" || 
+        tag.toLowerCase() === "quote-card:bgatis" ||
+        tag.toLowerCase() === "quotecard:bgats"
       )) {
         return "bgatis";
       } else if (quote.tags.some(tag => 
-        tag.toLowerCase().includes("quotecard:sb") || 
-        tag.toLowerCase().includes("quote-card:sb")
+        tag.toLowerCase() === "quotecard:sb" || 
+        tag.toLowerCase() === "quote-card:sb"
       )) {
         return "sb";
       } else if (quote.tags.some(tag => 
-        tag.toLowerCase().includes("quotecard:cc") || 
-        tag.toLowerCase().includes("quote-card:cc")
+        tag.toLowerCase() === "quotecard:cc" || 
+        tag.toLowerCase() === "quote-card:cc"
       )) {
         return "cc";
       } else if (quote.tags.some(tag => 
-        tag.toLowerCase().includes("quotecard:lila-amrita") || 
-        tag.toLowerCase().includes("quote-card:lila-amrita")
+        tag.toLowerCase() === "quotecard:lila-amrita" || 
+        tag.toLowerCase() === "quote-card:lila-amrita"
       )) {
         return "lila-amrita";
       } else if (quote.tags.some(tag => 
-        tag.toLowerCase().includes("superman")
+        tag.toLowerCase() === "superman"
       )) {
         return "superman";
       }

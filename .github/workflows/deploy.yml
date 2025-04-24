@@ -30,6 +30,11 @@ jobs:
       run: npm run build
       env:
         CI: false
+        MONGODB_URI: ${{ vars.MONGODB_URI }}
+        PORT: ${{ vars.PORT }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+        
     
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3

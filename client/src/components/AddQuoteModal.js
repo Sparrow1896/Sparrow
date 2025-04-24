@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import { FaTimes, FaSpinner } from 'react-icons/fa';
 import { useQuote } from '../context/QuoteContext';
 import './styles/Modal.css';
 
@@ -13,6 +13,9 @@ const AddQuoteModal = () => {
     collection: 'Mix',
     keywords: ''
   });
+  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -21,59 +24,68 @@ const AddQuoteModal = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError('');
     
-    // Create statement object
-    const keywords = formData.keywords
-      .split(',')
-      .map(keyword => keyword.trim())
-      .filter(keyword => keyword.length > 0);
-    
-    // Create tags based on collection
-    const tags = [];
-    if (formData.collection !== 'Mix') {
-      const collectionTag = getCollectionTag(formData.collection);
-      if (collectionTag && !tags.includes(collectionTag)) {
-        tags.push(collectionTag);
-      }
-    }
-    
-    // Add keywords as tags if they're not already there
-    keywords.forEach(keyword => {
-      if (!tags.includes(keyword)) {
-        tags.push(keyword);
-      }
-    });
-    
-    // Process statement text to properly handle line breaks
-    // This ensures <br> tags are preserved in the database
-    const processedStatement = formData.statement.trim();
-    
-    const quoteData = {
-      ref: formData.reference,
-      speaker: formData.speaker,
-      collection: formData.collection,
-      statements: [
-        {
-          statement: processedStatement,
-          tags,
-          keywords
+    try {
+      // Create statement object
+      const keywords = formData.keywords
+        .split(',')
+        .map(keyword => keyword.trim())
+        .filter(keyword => keyword.length > 0);
+      
+      // Create tags based on collection
+      const tags = [];
+      if (formData.collection !== 'Mix') {
+        const collectionTag = getCollectionTag(formData.collection);
+        if (collectionTag && !tags.includes(collectionTag)) {
+          tags.push(collectionTag);
         }
-      ]
-    };
-    
-    // Submit to API
-    addQuote(quoteData);
-    
-    // Reset form
-    setFormData({
-      statement: '',
-      reference: '',
-      speaker: 'Śrīla Prabhupāda',
-      collection: 'Mix',
-      keywords: ''
-    });
+      }
+      
+      // Add keywords as tags if they're not already there
+      keywords.forEach(keyword => {
+        if (!tags.includes(keyword)) {
+          tags.push(keyword);
+        }
+      });
+      
+      // Process statement text to properly handle line breaks
+      // This ensures <br> tags are preserved in the database
+      const processedStatement = formData.statement.trim();
+      
+      const quoteData = {
+        ref: formData.reference,
+        speaker: formData.speaker,
+        collection: formData.collection,
+        statements: [
+          {
+            statement: processedStatement,
+            tags,
+            keywords
+          }
+        ]
+      };
+      
+      // Submit to API
+      await addQuote(quoteData);
+      
+      // Reset form
+      setFormData({
+        statement: '',
+        reference: '',
+        speaker: 'Śrīla Prabhupāda',
+        collection: 'Mix',
+        keywords: ''
+      });
+    } catch (error) {
+      setSubmitError('Failed to add quote. Please try again.');
+      console.error('Error adding quote:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getCollectionTag = (collection) => {
@@ -98,6 +110,18 @@ const AddQuoteModal = () => {
       case 'Śrī Caitanya-caritāmṛta': return 'cc-option';
       case 'Bhagavad-gītā As It Is': return 'bgatis-option';
       default: return '';
+    }
+  };
+  
+  // Helper function to get collection icon
+  const getCollectionIcon = (collection) => {
+    switch(collection) {
+      case 'Superman': return '🦸‍♂️';
+      case 'The Empowered Ācārya': return '🕉️';
+      case 'Śrīmad-Bhāgavatam': return '📜';
+      case 'Śrī Caitanya-caritāmṛta': return '🌸';
+      case 'Bhagavad-gītā As It Is': return '🏹';
+      default: return '📚';
     }
   };
 
@@ -149,7 +173,8 @@ const AddQuoteModal = () => {
                   className={`collection-option ${getCollectionColorClass(collection)} ${formData.collection === collection ? 'selected' : ''}`}
                   onClick={() => setFormData({...formData, collection})}
                 >
-                  {collection}
+                  <span className="collection-icon">{getCollectionIcon(collection)}</span>
+                  <span className="collection-name">{collection}</span>
                 </div>
               ))}
             </div>
@@ -164,8 +189,19 @@ const AddQuoteModal = () => {
               onChange={handleChange}
             />
           </div>
+          {submitError && (
+            <div className="error-message">{submitError}</div>
+          )}
           <div className="form-actions">
-            <button type="submit" className="btn submit-btn">Submit Quote</button>
+            <button type="submit" className="btn submit-btn" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FaSpinner className="spinner-icon" /> Submitting...
+                </>
+              ) : (
+                'Submit Quote'
+              )}
+            </button>
           </div>
         </form>
       </div>

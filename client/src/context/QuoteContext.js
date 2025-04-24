@@ -126,12 +126,12 @@ function quoteReducer(state, action) {
 export const QuoteProvider = ({ children }) => {
   const [state, dispatch] = useReducer(quoteReducer, initialState);
 
-  // Fetch quotes
+  // Fetch quotes with fallback to local file if MongoDB is unavailable
   const fetchQuotes = async () => {
     try {
       dispatch({ type: 'SET_LOADING' });
 
-      // Use the service to fetch quotes
+      // Use the service to fetch quotes (will handle fallback internally)
       const data = await fetchQuotesService();
 
       // Log the response to help with debugging
@@ -145,17 +145,36 @@ export const QuoteProvider = ({ children }) => {
 
       // Process the quotes to create the flat structure
       processQuotes(data);
+      
+      // Check if there are any offline changes to sync
+      syncOfflineChanges();
     } catch (err) {
       console.error('Error fetching quotes:', err);
 
       // Dispatch failure action with the error message
       dispatch({
         type: 'FETCH_QUOTES_FAILURE',
-        payload: err.response?.data?.msg || 'Error fetching quotes'
+        payload: err.message || 'Error fetching quotes'
       });
 
       // Show error toast
-      toast.error(err.response?.data?.msg || 'Error fetching quotes');
+      toast.error(err.message || 'Error fetching quotes');
+    }
+  };
+  
+  // Attempt to sync offline changes when connection is restored
+  const syncOfflineChanges = async () => {
+    try {
+      // Import dynamically to avoid circular dependencies
+      const { syncOfflineChanges } = await import('../utils/quoteService');
+      const result = await syncOfflineChanges();
+      
+      if (result.success) {
+        // Refresh quotes after successful sync
+        fetchQuotes();
+      }
+    } catch (err) {
+      console.error('Error syncing offline changes:', err);
     }
   };
 
@@ -646,29 +665,39 @@ export const QuoteProvider = ({ children }) => {
     dispatch({ type: 'SET_CURRENT_RESULTS', payload: results });
   };
 
-  // Add a new quote
+  // Add a new quote with fallback support
   const addQuote = async (quoteData) => {
     try {
       dispatch({ type: 'SET_LOADING' });
 
-      const res = await axios.post('/api/quotes', quoteData);
+      // Import the service function dynamically to avoid circular dependencies
+      const { addQuote: addQuoteService } = await import('../utils/quoteService');
+      
+      // Use the service function which handles fallback
+      const newQuote = await addQuoteService(quoteData);
 
       dispatch({
         type: 'ADD_QUOTE_SUCCESS',
-        payload: res.data
+        payload: newQuote
       });
 
       // Re-process quotes to update the flat quotes
-      processQuotes([res.data, ...state.quotes]);
+      processQuotes([newQuote, ...state.quotes]);
 
       // Show success toast
       toast.success('Quote added successfully!');
+      
+      // Return the data for async handling in components
+      return newQuote;
     } catch (err) {
       dispatch({
         type: 'ADD_QUOTE_FAILURE',
-        payload: err.response?.data?.msg || 'Error adding quote'
+        payload: err.message || 'Error adding quote'
       });
-      toast.error(err.response?.data?.msg || 'Error adding quote');
+      toast.error(err.message || 'Error adding quote');
+      
+      // Throw the error so it can be caught by the component
+      throw err;
     }
   };
 

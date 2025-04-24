@@ -4,6 +4,9 @@ const auth = require('../middleware/auth');
 const Quote = require('../models/Quote');
 const mongoose = require('mongoose');
 
+// Store recently deleted quotes for undo functionality
+let recentlyDeletedQuotes = [];
+
 // @route   GET api/quotes
 // @desc    Get all quotes with optional filtering
 // @access  Public
@@ -120,5 +123,65 @@ function extractLectureFromReference(ref) {
   const lectureMatch = ref.match(/lecture on (.+?)(?=\s+in\s+|$)/i);
   return lectureMatch ? lectureMatch[0] : "";
 }
+
+// @route   DELETE api/quotes/:id
+// @desc    Delete a quote
+// @access  Private
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const quote = await Quote.findById(req.params.id);
+    
+    if (!quote) {
+      return res.status(404).json({ msg: 'Quote not found' });
+    }
+    
+    // Store the quote for potential undo operation
+    recentlyDeletedQuotes.push(quote);
+    // Limit the undo history to last 10 deleted quotes
+    if (recentlyDeletedQuotes.length > 10) {
+      recentlyDeletedQuotes.shift();
+    }
+    
+    await quote.deleteOne();
+    res.json({ msg: 'Quote deleted successfully', id: req.params.id });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Quote not found' });
+    }
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST api/quotes/undo
+// @desc    Restore the last deleted quote
+// @access  Private
+router.post('/undo', auth, async (req, res) => {
+  try {
+    if (recentlyDeletedQuotes.length === 0) {
+      return res.status(404).json({ msg: 'No recently deleted quotes to restore' });
+    }
+    
+    // Get the most recently deleted quote
+    const quoteToRestore = recentlyDeletedQuotes.pop();
+    
+    // Create a new quote with the same data
+    const restoredQuote = new Quote({
+      ref: quoteToRestore.ref,
+      speaker: quoteToRestore.speaker,
+      date: quoteToRestore.date,
+      location: quoteToRestore.location,
+      lecture: quoteToRestore.lecture,
+      statements: quoteToRestore.statements,
+      collection: quoteToRestore.collection
+    });
+    
+    await restoredQuote.save();
+    res.json(restoredQuote);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
 
 module.exports = router;

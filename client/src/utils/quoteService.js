@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
 // Configure axios with base URL and timeout settings
 const api = axios.create({
@@ -17,20 +18,61 @@ api.interceptors.request.use(config => {
   return Promise.reject(error);
 });
 
+// Track if we're in fallback mode
+let usingFallbackData = false;
+
+// Store the fallback data once loaded
+let fallbackQuotesData = null;
+
 /**
- * Fetch all quotes from the API
+ * Load quotes from local JSON file
+ * @returns {Promise} Promise that resolves to the quotes data from local file
+ */
+const loadQuotesFromFile = async () => {
+  try {
+    if (fallbackQuotesData) {
+      return fallbackQuotesData; // Return cached data if available
+    }
+    
+    console.log('Loading quotes from local file...');
+    const response = await fetch('/quotes.json');
+    if (!response.ok) {
+      throw new Error(`Failed to load local quotes file: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('Quotes loaded from local file:', data.length);
+    
+    // Cache the data for future use
+    fallbackQuotesData = data;
+    return data;
+  } catch (error) {
+    console.error('Error loading quotes from file:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch all quotes from the API with fallback to local file
  * @returns {Promise} Promise that resolves to the quotes data
  */
 export const fetchAllQuotes = async () => {
   try {
-    // Add retry logic for network errors
-    let retries = 3;
+    // If we're already in fallback mode, go straight to file
+    if (usingFallbackData) {
+      console.log('Using fallback data source (local file)');
+      return await loadQuotesFromFile();
+    }
+    
+    // Try the API first with retry logic
+    let retries = 2;
     let lastError = null;
     
     while (retries > 0) {
       try {
         const response = await api.get('/api/quotes');
-        console.log('Quotes fetched successfully:', response.data.length);
+        console.log('Quotes fetched successfully from API:', response.data.length);
+        usingFallbackData = false; // Reset fallback flag if API works
         return response.data;
       } catch (error) {
         lastError = error;
@@ -46,12 +88,24 @@ export const fetchAllQuotes = async () => {
       }
     }
     
-    // If we've exhausted all retries
-    console.error('Error fetching quotes after multiple attempts:', lastError);
-    throw lastError;
+    // If we've exhausted all retries, switch to fallback
+    console.log('Switching to fallback data source after failed API attempts');
+    usingFallbackData = true;
+    toast.info('Using offline mode: quotes loaded from local storage');
+    return await loadQuotesFromFile();
   } catch (error) {
     console.error('Error fetching quotes:', error);
-    throw error;
+    
+    // Try fallback as last resort
+    try {
+      console.log('Attempting to load from fallback source');
+      usingFallbackData = true;
+      toast.info('Using offline mode: quotes loaded from local storage');
+      return await loadQuotesFromFile();
+    } catch (fallbackError) {
+      console.error('Critical error: Both API and fallback failed:', fallbackError);
+      throw error; // Throw original error if fallback also fails
+    }
   }
 };
 
@@ -63,8 +117,28 @@ export const fetchAllQuotes = async () => {
  */
 export const fetchQuotesByCollection = async (collection) => {
   try {
-    const response = await api.get(`/api/quotes?collection=${collection}`);
-    return response.data;
+    // If we're in fallback mode, filter from local data
+    if (usingFallbackData) {
+      console.log(`Filtering local quotes by collection: ${collection}`);
+      const allQuotes = await loadQuotesFromFile();
+      return allQuotes.filter(quote => quote.collection === collection);
+    }
+    
+    // Try API first
+    try {
+      const response = await api.get(`/api/quotes?collection=${collection}`);
+      return response.data;
+    } catch (error) {
+      // If API fails, switch to fallback
+      if (error.code === 'ERR_NETWORK') {
+        console.log('Network error, switching to fallback data for collection filtering');
+        usingFallbackData = true;
+        toast.info('Using offline mode: quotes loaded from local storage');
+        const allQuotes = await loadQuotesFromFile();
+        return allQuotes.filter(quote => quote.collection === collection);
+      }
+      throw error;
+    }
   } catch (error) {
     console.error(`Error fetching quotes from collection ${collection}:`, error);
     throw error;
@@ -78,16 +152,220 @@ export const fetchQuotesByCollection = async (collection) => {
  */
 export const searchQuotes = async (searchTerm) => {
   try {
-    const response = await api.get(`/api/quotes?search=${encodeURIComponent(searchTerm)}`);
-    return response.data;
+    // If we're in fallback mode, search in local data
+    if (usingFallbackData) {
+      console.log(`Searching local quotes for term: ${searchTerm}`);
+      const allQuotes = await loadQuotesFromFile();
+      const term = searchTerm.toLowerCase();
+      return allQuotes.filter(quote => {
+        // Simple search implementation for fallback mode
+        const statementMatches = quote.statements.some(s => 
+          s.statement.toLowerCase().includes(term));
+        const refMatch = quote.ref.toLowerCase().includes(term);
+        const speakerMatch = quote.speaker && quote.speaker.toLowerCase().includes(term);
+        return statementMatches || refMatch || speakerMatch;
+      });
+    }
+    
+    // Try API first
+    try {
+      const response = await api.get(`/api/quotes?search=${encodeURIComponent(searchTerm)}`);
+      return response.data;
+    } catch (error) {
+      // If API fails, switch to fallback
+      if (error.code === 'ERR_NETWORK') {
+        console.log('Network error, switching to fallback data for search');
+        usingFallbackData = true;
+        toast.info('Using offline mode: quotes loaded from local storage');
+        const allQuotes = await loadQuotesFromFile();
+        const term = searchTerm.toLowerCase();
+        return allQuotes.filter(quote => {
+          const statementMatches = quote.statements.some(s => 
+            s.statement.toLowerCase().includes(term));
+          const refMatch = quote.ref.toLowerCase().includes(term);
+          const speakerMatch = quote.speaker && quote.speaker.toLowerCase().includes(term);
+          return statementMatches || refMatch || speakerMatch;
+        });
+      }
+      throw error;
+    }
   } catch (error) {
     console.error(`Error searching quotes with term "${searchTerm}":`, error);
     throw error;
   }
 };
 
+/**
+ * Add a new quote
+ * @param {Object} quoteData - The quote data to add
+ * @returns {Promise} Promise that resolves to the added quote
+ */
+export const addQuote = async (quoteData) => {
+  try {
+    // Try API first
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      const response = await api.post('/api/quotes', quoteData, {
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      return response.data;
+    } catch (error) {
+      // If API fails due to network error, use fallback
+      if (error.code === 'ERR_NETWORK') {
+        console.log('Network error, using fallback for adding quote');
+        usingFallbackData = true;
+        toast.info('Using offline mode: quote saved to local storage');
+        
+        // Get existing quotes from localStorage or initialize empty array
+        let localQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
+        
+        // Add new quote with temporary ID
+        const newQuote = {
+          ...quoteData,
+          _id: `temp_${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          offlineCreated: true
+        };
+        
+        localQuotes.push(newQuote);
+        localStorage.setItem('offlineQuotes', JSON.stringify(localQuotes));
+        
+        toast.success('Quote saved locally. Will sync when connection is restored.');
+        return newQuote;
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error adding quote:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a quote
+ * @param {string} quoteId - The ID of the quote to delete
+ * @returns {Promise} Promise that resolves when the quote is deleted
+ */
+export const deleteQuote = async (quoteId) => {
+  try {
+    // Try API first
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+      
+      const response = await api.delete(`/api/quotes/${quoteId}`, {
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      return response.data;
+    } catch (error) {
+      // If API fails due to network error, use fallback
+      if (error.code === 'ERR_NETWORK') {
+        console.log('Network error, using fallback for deleting quote');
+        usingFallbackData = true;
+        toast.info('Using offline mode: deletion tracked locally');
+        
+        // Get existing deleted quotes from localStorage or initialize empty array
+        let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+        
+        // Add quote ID to deleted list
+        deletedQuotes.push({
+          quoteId,
+          deletedAt: new Date().toISOString()
+        });
+        
+        localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
+        
+        toast.success('Quote marked for deletion. Will sync when connection is restored.');
+        return { success: true, message: 'Quote marked for deletion locally' };
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error(`Error deleting quote ${quoteId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Sync offline changes when connection is restored
+ * @returns {Promise} Promise that resolves when sync is complete
+ */
+export const syncOfflineChanges = async () => {
+  try {
+    // Check if we have a connection
+    try {
+      await api.get('/api/health');
+    } catch (error) {
+      console.log('Still offline, cannot sync changes');
+      return { success: false, message: 'Still offline' };
+    }
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return { success: false, message: 'Authentication required for sync' };
+    }
+    
+    // Sync new quotes
+    const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
+    if (offlineQuotes.length > 0) {
+      for (const quote of offlineQuotes) {
+        try {
+          // Remove temporary properties
+          const { _id, offlineCreated, ...quoteData } = quote;
+          
+          await api.post('/api/quotes', quoteData, {
+            headers: { 'x-auth-token': token }
+          });
+        } catch (error) {
+          console.error('Error syncing offline quote:', error);
+        }
+      }
+      
+      // Clear synced quotes
+      localStorage.removeItem('offlineQuotes');
+    }
+    
+    // Sync deleted quotes
+    const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+    if (deletedQuotes.length > 0) {
+      for (const { quoteId } of deletedQuotes) {
+        try {
+          await api.delete(`/api/quotes/${quoteId}`, {
+            headers: { 'x-auth-token': token }
+          });
+        } catch (error) {
+          console.error(`Error syncing deleted quote ${quoteId}:`, error);
+        }
+      }
+      
+      // Clear synced deletions
+      localStorage.removeItem('offlineDeletedQuotes');
+    }
+    
+    usingFallbackData = false;
+    toast.success('Offline changes synced successfully');
+    return { success: true, message: 'Sync completed' };
+  } catch (error) {
+    console.error('Error syncing offline changes:', error);
+    return { success: false, message: error.message };
+  }
+};
+
 export default {
   fetchAllQuotes,
   fetchQuotesByCollection,
-  searchQuotes
+  searchQuotes,
+  addQuote,
+  deleteQuote,
+  syncOfflineChanges
 };

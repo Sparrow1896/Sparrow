@@ -106,64 +106,136 @@
   box-shadow: 0 4px 12px rgba(255, 213, 79, 0.3);
 }
 
+.submit-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+  display: inline-block;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Collection selector styles */
 .collection-selector {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 5px;
+  gap: 12px;
+  margin-top: 15px;
+  justify-content: center;
 }
 
 .collection-option {
-  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 120px;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.collection-option:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
+  z-index: 1;
 }
 
 .collection-option:hover {
   background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
 }
 
 .collection-option.selected {
   border-color: var(--accent);
   background: rgba(255, 213, 79, 0.1);
-  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 213, 79, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: scale(1.05);
+}
+
+.collection-icon {
+  font-size: 1.4rem;
+  margin-right: 10px;
+  position: relative;
+  z-index: 2;
+}
+
+.collection-name {
+  font-weight: 600;
+  position: relative;
+  z-index: 2;
 }
 
 /* Collection color options */
+.collection-option.superman-option {
+  border-color: rgba(255, 105, 180, 0.3);
+}
+
+.collection-option.lila-amrita-option {
+  border-color: rgba(0, 255, 255, 0.3);
+}
+
+.collection-option.sb-option {
+  border-color: rgba(205, 133, 63, 0.3);
+}
+
+.collection-option.cc-option {
+  border-color: rgba(0, 204, 102, 0.3);
+}
+
+.collection-option.bgatis-option {
+  border-color: rgba(255, 51, 51, 0.3);
+}
+
 .collection-option.superman-option.selected {
   border-color: var(--superman-color);
-  background: rgba(255, 105, 180, 0.1);
-  box-shadow: 0 0 0 2px rgba(255, 105, 180, 0.2);
+  background: rgba(255, 105, 180, 0.15);
+  box-shadow: 0 0 0 2px rgba(255, 105, 180, 0.3), 0 6px 15px rgba(0, 0, 0, 0.25);
 }
 
 .collection-option.lila-amrita-option.selected {
   border-color: var(--lila-amrita-color);
-  background: rgba(0, 255, 255, 0.1);
-  box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.2);
+  background: rgba(0, 255, 255, 0.15);
+  box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.3), 0 6px 15px rgba(0, 0, 0, 0.25);
 }
 
 .collection-option.sb-option.selected {
   border-color: var(--sb-color);
-  background: rgba(205, 133, 63, 0.1);
-  box-shadow: 0 0 0 2px rgba(205, 133, 63, 0.2);
+  background: rgba(205, 133, 63, 0.15);
+  box-shadow: 0 0 0 2px rgba(205, 133, 63, 0.3), 0 6px 15px rgba(0, 0, 0, 0.25);
 }
 
 .collection-option.cc-option.selected {
   border-color: var(--cc-color);
-  background: rgba(0, 204, 102, 0.1);
-  box-shadow: 0 0 0 2px rgba(0, 204, 102, 0.2);
+  background: rgba(0, 204, 102, 0.15);
+  box-shadow: 0 0 0 2px rgba(0, 204, 102, 0.3), 0 6px 15px rgba(0, 0, 0, 0.25);
 }
 
 .collection-option.bgatis-option.selected {
   border-color: var(--bgatis-color);
-  background: rgba(255, 51, 51, 0.1);
-  box-shadow: 0 0 0 2px rgba(255, 51, 51, 0.2);
+  background: rgba(255, 51, 51, 0.15);
+  box-shadow: 0 0 0 2px rgba(255, 51, 51, 0.3), 0 6px 15px rgba(0, 0, 0, 0.25);
 }
 
 .error-message {
@@ -185,5 +257,32 @@
   
   .form-actions {
     justify-content: center;
+  }
+  
+  .collection-selector {
+    gap: 8px;
+  }
+  
+  .collection-option {
+    padding: 10px 14px;
+    min-width: 100px;
+    font-size: 0.85rem;
+  }
+  
+  .collection-icon {
+    font-size: 1.2rem;
+    margin-right: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .collection-option {
+    flex: 1 0 calc(50% - 8px);
+    justify-content: flex-start;
+    padding: 8px 12px;
+  }
+  
+  .modal h2 {
+    font-size: 1.3rem;
   }
 }

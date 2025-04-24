@@ -1,12 +1,38 @@
-import React from 'react';
-import { FaCopy } from 'react-icons/fa';
+import React, { useState, useEffect } from 'react';
+import { FaCopy, FaTrash, FaUndo } from 'react-icons/fa';
 import { useQuote } from '../context/QuoteContext';
 import './styles/QuoteCard.css';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 
 const QuoteCard = ({ quote }) => {
-  const { copyToClipboard } = useQuote();
+  const { copyToClipboard, fetchQuotes } = useQuote();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const res = await axios.get('/api/auth', {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+          setIsAdmin(res.data.isAdmin);
+        }
+      } catch (err) {
+        console.error('Error checking admin status:', err);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, []);
 
-  // Determine the appropriate class based on tags
+  // Determine the appropriate class based on tags - FIXED to strictly match quotecard tags
   const getCardClass = () => {
     // First check for specific quotecard tags with strict matching
     if (quote.tags && Array.isArray(quote.tags)) {
@@ -37,30 +63,73 @@ const QuoteCard = ({ quote }) => {
       } 
       // Check for Superman tags
       else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:superman" ||
-        tag.toLowerCase() === "superman"
+        tag.toLowerCase() === "quotecard:superman"
       )) {
         return "superman";
       }
     }
     
-    // If no specific tag is found, check if the quote has a scriptureCode
-    if (quote.scriptureCode) {
-      if (quote.scriptureCode === "BG") return "bgatis";
-      if (quote.scriptureCode === "SB") return "sb";
-      if (quote.scriptureCode === "CC") return "cc";
+    // If no specific quotecard tag is found, return empty string
+    // This ensures only quotes with specific quotecard tags get colored
+    return ""; // Default class (no special color)
+  };
+  
+  // Delete quote function with fallback support
+  const handleDelete = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('You must be logged in to delete quotes');
+        return;
+      }
+      
+      // Import the deleteQuote function from quoteService
+      const { deleteQuote } = await import('../utils/quoteService');
+      
+      // Use the service function which handles fallback
+      await deleteQuote(quote._id);
+      
+      // Refresh quotes list
+      fetchQuotes();
+      toast.success('Quote deleted successfully');
+    } catch (err) {
+      console.error('Error deleting quote:', err);
+      toast.error(err.message || 'Error deleting quote');
     }
-    
-    // If the quote has a collection property, use that
-    if (quote.collection) {
-      if (quote.collection === "Bhagavad-gītā As It Is") return "bgatis";
-      if (quote.collection === "Śrīmad-Bhāgavatam") return "sb";
-      if (quote.collection === "Śrī Caitanya-caritāmṛta") return "cc";
-      if (quote.collection === "The Empowered Ācārya") return "lila-amrita";
-      if (quote.collection === "Superman") return "superman";
+  };
+  
+  // Undo delete function
+  const handleUndo = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('You must be logged in to restore quotes');
+        return;
+      }
+      
+      // Try to use API directly for undo operation
+      try {
+        await axios.post('/api/quotes/undo', {}, {
+          headers: {
+            'x-auth-token': token
+          }
+        });
+        
+        // Refresh quotes list
+        fetchQuotes();
+        toast.success('Quote restored successfully');
+      } catch (error) {
+        // If network error, show offline message
+        if (error.code === 'ERR_NETWORK') {
+          toast.error('Cannot restore quotes in offline mode');
+        } else {
+          throw error;
+        }
+      }
+    } catch (err) {
+      console.error('Error restoring quote:', err);
+      toast.error(err.message || 'Error restoring quote');
     }
-    
-    return ""; // Default class
   };
 
   const handleCopy = (e) => {
@@ -77,9 +146,31 @@ const QuoteCard = ({ quote }) => {
     <div className={`quote-card ${getCardClass()}`}>
       <div className="statement" dangerouslySetInnerHTML={formatStatement(quote.statement)}></div>
       <div className="ref">— {quote.ref}</div>
-      <button className="copy-btn" title="Copy quote" onClick={handleCopy}>
-        <FaCopy />
-      </button>
+      <div className="quote-actions">
+        <button className="copy-btn" title="Copy quote" onClick={handleCopy}>
+          <FaCopy />
+        </button>
+        
+        {isAdmin && (
+          <>
+            {showDeleteConfirm ? (
+              <div className="delete-confirm">
+                <span>Delete?</span>
+                <button onClick={handleDelete} className="confirm-yes">Yes</button>
+                <button onClick={() => setShowDeleteConfirm(false)} className="confirm-no">No</button>
+              </div>
+            ) : (
+              <button className="delete-btn" title="Delete quote" onClick={() => setShowDeleteConfirm(true)}>
+                <FaTrash />
+              </button>
+            )}
+            
+            <button className="undo-btn" title="Undo last delete" onClick={handleUndo}>
+              <FaUndo />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 };

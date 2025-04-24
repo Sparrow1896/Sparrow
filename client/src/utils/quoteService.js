@@ -18,6 +18,19 @@ api.interceptors.request.use(config => {
   return Promise.reject(error);
 });
 
+// Add a response interceptor for debugging
+api.interceptors.response.use(response => {
+  console.log(`API Response: ${response.status} ${response.config.method.toUpperCase()} ${response.config.url}`);
+  return response;
+}, error => {
+  if (error.response) {
+    console.error(`API Error: ${error.response.status} ${error.config.method.toUpperCase()} ${error.config.url}`);
+  } else {
+    console.error(`API Error: ${error.message}`);
+  }
+  return Promise.reject(error);
+});
+
 // Track if we're in fallback mode
 let usingFallbackData = false;
 
@@ -30,6 +43,20 @@ let fallbackQuotesData = null;
  */
 const loadQuotesFromFile = async () => {
   try {
+    // First check if we have cached data in localStorage
+    const cachedData = localStorage.getItem('fallbackQuotesData');
+    if (cachedData) {
+      try {
+        fallbackQuotesData = JSON.parse(cachedData);
+        console.log('Quotes loaded from localStorage cache:', fallbackQuotesData.length);
+        return fallbackQuotesData;
+      } catch (parseError) {
+        console.error('Error parsing cached quotes data:', parseError);
+        // Continue to fetch from file if parsing fails
+      }
+    }
+    
+    // If no cached data or parsing failed, load from file
     if (fallbackQuotesData) {
       return fallbackQuotesData; // Return cached data if available
     }
@@ -45,6 +72,7 @@ const loadQuotesFromFile = async () => {
     
     // Cache the data for future use
     fallbackQuotesData = data;
+    localStorage.setItem('fallbackQuotesData', JSON.stringify(data));
     return data;
   } catch (error) {
     console.error('Error loading quotes from file:', error);
@@ -73,6 +101,20 @@ export const fetchAllQuotes = async () => {
         const response = await api.get('/api/quotes');
         console.log('Quotes fetched successfully from API:', response.data.length);
         usingFallbackData = false; // Reset fallback flag if API works
+        
+        // Update fallback data with the latest from API
+        fallbackQuotesData = response.data;
+        localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+        
+        // Check for offline changes that need to be synced
+        const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
+        const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+        
+        if (offlineQuotes.length > 0 || deletedQuotes.length > 0) {
+          console.log('Found offline changes, attempting to sync...');
+          syncOfflineChanges();
+        }
+        
         return response.data;
       } catch (error) {
         lastError = error;
@@ -266,6 +308,14 @@ export const deleteQuote = async (quoteId) => {
           'x-auth-token': token
         }
       });
+      
+      // Also remove from local fallback data if it exists
+      if (fallbackQuotesData) {
+        fallbackQuotesData = fallbackQuotesData.filter(quote => quote._id !== quoteId);
+        // Update the local quotes.json file with the updated data
+        localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      }
+      
       return response.data;
     } catch (error) {
       // If API fails due to network error, use fallback
@@ -284,6 +334,13 @@ export const deleteQuote = async (quoteId) => {
         });
         
         localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
+        
+        // Also remove from local fallback data if it exists
+        if (fallbackQuotesData) {
+          fallbackQuotesData = fallbackQuotesData.filter(quote => quote._id !== quoteId);
+          // Update the local storage with the updated data
+          localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+        }
         
         toast.success('Quote marked for deletion. Will sync when connection is restored.');
         return { success: true, message: 'Quote marked for deletion locally' };
@@ -318,6 +375,7 @@ export const syncOfflineChanges = async () => {
     // Sync new quotes
     const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
     if (offlineQuotes.length > 0) {
+      console.log(`Syncing ${offlineQuotes.length} offline quotes to server...`);
       for (const quote of offlineQuotes) {
         try {
           // Remove temporary properties
@@ -326,6 +384,7 @@ export const syncOfflineChanges = async () => {
           await api.post('/api/quotes', quoteData, {
             headers: { 'x-auth-token': token }
           });
+          console.log(`Synced quote: ${quoteData.ref}`);
         } catch (error) {
           console.error('Error syncing offline quote:', error);
         }
@@ -338,11 +397,13 @@ export const syncOfflineChanges = async () => {
     // Sync deleted quotes
     const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
     if (deletedQuotes.length > 0) {
+      console.log(`Syncing ${deletedQuotes.length} deleted quotes to server...`);
       for (const { quoteId } of deletedQuotes) {
         try {
           await api.delete(`/api/quotes/${quoteId}`, {
             headers: { 'x-auth-token': token }
           });
+          console.log(`Synced deletion of quote ID: ${quoteId}`);
         } catch (error) {
           console.error(`Error syncing deleted quote ${quoteId}:`, error);
         }
@@ -350,6 +411,16 @@ export const syncOfflineChanges = async () => {
       
       // Clear synced deletions
       localStorage.removeItem('offlineDeletedQuotes');
+    }
+    
+    // Refresh fallback data after sync
+    try {
+      const response = await api.get('/api/quotes');
+      fallbackQuotesData = response.data;
+      localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      console.log('Updated local cache with latest data from server');
+    } catch (error) {
+      console.error('Error refreshing local cache:', error);
     }
     
     usingFallbackData = false;
@@ -361,11 +432,72 @@ export const syncOfflineChanges = async () => {
   }
 };
 
+/**
+ * Get the count of quotes in different sources
+ * @returns {Promise} Promise that resolves to an object with counts
+ */
+export const getQuoteCounts = async () => {
+  try {
+    const counts = {
+      mongodb: 0,
+      localFile: 0,
+      localStorage: 0,
+      offlineQuotes: 0,
+      offlineDeletedQuotes: 0
+    };
+    
+    // Try to get MongoDB count
+    try {
+      const response = await api.get('/api/quotes/count');
+      counts.mongodb = response.data.count;
+    } catch (error) {
+      console.log('Could not get MongoDB quote count:', error.message);
+    }
+    
+    // Get local file count
+    try {
+      const response = await fetch('/quotes.json');
+      if (response.ok) {
+        const data = await response.json();
+        counts.localFile = data.length;
+      }
+    } catch (error) {
+      console.log('Could not get local file quote count:', error.message);
+    }
+    
+    // Get localStorage counts
+    try {
+      const cachedData = localStorage.getItem('fallbackQuotesData');
+      if (cachedData) {
+        counts.localStorage = JSON.parse(cachedData).length;
+      }
+      
+      const offlineQuotes = localStorage.getItem('offlineQuotes');
+      if (offlineQuotes) {
+        counts.offlineQuotes = JSON.parse(offlineQuotes).length;
+      }
+      
+      const offlineDeletedQuotes = localStorage.getItem('offlineDeletedQuotes');
+      if (offlineDeletedQuotes) {
+        counts.offlineDeletedQuotes = JSON.parse(offlineDeletedQuotes).length;
+      }
+    } catch (error) {
+      console.log('Could not get localStorage quote counts:', error.message);
+    }
+    
+    return counts;
+  } catch (error) {
+    console.error('Error getting quote counts:', error);
+    throw error;
+  }
+};
+
 export default {
   fetchAllQuotes,
   fetchQuotesByCollection,
   searchQuotes,
   addQuote,
   deleteQuote,
-  syncOfflineChanges
+  syncOfflineChanges,
+  getQuoteCounts
 };

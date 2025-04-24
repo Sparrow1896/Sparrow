@@ -184,4 +184,17 @@ router.post('/undo', auth, async (req, res) => {
   }
 });
 
+// @route   GET api/quotes/count
+// @desc    Get the total count of quotes
+// @access  Public
+router.get('/count', async (req, res) => {
+  try {
+    const count = await Quote.countDocuments();
+    res.json({ count });
+  } catch (err) {
+    console.error('Error getting quote count:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 module.exports = router;

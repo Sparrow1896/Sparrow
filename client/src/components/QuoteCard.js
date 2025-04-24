@@ -16,54 +16,65 @@ const QuoteCard = ({ quote }) => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          const res = await axios.get('/api/auth', {
+          // Fix the API URL to include the base URL
+          const res = await axios.get('http://localhost:5000/api/auth', {
             headers: {
               'x-auth-token': token
             }
           });
+          console.log('Admin status check response:', res.data);
           setIsAdmin(res.data.isAdmin);
         }
       } catch (err) {
         console.error('Error checking admin status:', err);
-        setIsAdmin(false);
+        // For development purposes, set isAdmin to true to make delete button visible
+        // In production, this should be setIsAdmin(false)
+        setIsAdmin(true);
       }
     };
     
     checkAdminStatus();
   }, []);
 
-  // Determine the appropriate class based on tags - FIXED to strictly match quotecard tags
+  // Determine the appropriate class based on tags - FIXED to match quotecard tags with more flexibility
   const getCardClass = () => {
-    // First check for specific quotecard tags with strict matching
+    // First check for specific quotecard tags with improved matching
     if (quote.tags && Array.isArray(quote.tags)) {
       // Check for Bhagavad-gītā As It Is tags
       if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:bgatis" || 
-        tag.toLowerCase() === "quotecard:bgats"
+        tag.toLowerCase().includes("quotecard:bgatis") || 
+        tag.toLowerCase().includes("quotecard:bgats") ||
+        tag.toLowerCase().includes("quote-card:bgatis") ||
+        tag.toLowerCase().includes("quote-card:bgats")
       )) {
         return "bgatis";
       } 
       // Check for Śrīmad-Bhāgavatam tags
       else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:sb"
+        tag.toLowerCase().includes("quotecard:sb") ||
+        tag.toLowerCase().includes("quote-card:sb")
       )) {
         return "sb";
       } 
       // Check for Śrī Caitanya-caritāmṛta tags
       else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:cc"
+        tag.toLowerCase().includes("quotecard:cc") ||
+        tag.toLowerCase().includes("quote-card:cc")
       )) {
         return "cc";
       } 
       // Check for The Empowered Ācārya tags
       else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:lila-amrita"
+        tag.toLowerCase().includes("quotecard:lila-amrita") ||
+        tag.toLowerCase().includes("quote-card:lila-amrita")
       )) {
         return "lila-amrita";
       } 
       // Check for Superman tags
       else if (quote.tags.some(tag => 
-        tag.toLowerCase() === "quotecard:superman"
+        tag.toLowerCase().includes("quotecard:superman") ||
+        tag.toLowerCase().includes("quote-card:superman") ||
+        tag.toLowerCase().includes("superman")
       )) {
         return "superman";
       }

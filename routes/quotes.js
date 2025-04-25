@@ -129,27 +129,68 @@ function extractLectureFromReference(ref) {
 // @access  Private
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const quote = await Quote.findById(req.params.id);
+    const id = req.params.id;
+    let quote;
+    
+    // Try to find the quote by ID first
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      quote = await Quote.findById(id);
+    }
+    
+    // If not found by ID, try to find by other identifiers
+    if (!quote) {
+      // Try to find by reference or other fields
+      quote = await Quote.findOne({
+        $or: [
+          { ref: id },
+          { 'statements.statement': id }
+        ]
+      });
+    }
     
     if (!quote) {
+      console.log(`Quote not found with ID: ${id}`);
       return res.status(404).json({ msg: 'Quote not found' });
     }
     
-    // Store the quote for potential undo operation
-    recentlyDeletedQuotes.push(quote);
+    // Log the deletion for audit purposes
+    console.log(`Quote deletion requested by user ${req.user.id} for quote ID: ${req.params.id}`);
+    
+    // Store the quote for potential undo operation with user info
+    const quoteWithMeta = quote.toObject();
+    quoteWithMeta.deletedBy = req.user.id;
+    quoteWithMeta.deletedAt = new Date().toISOString();
+    
+    recentlyDeletedQuotes.push(quoteWithMeta);
     // Limit the undo history to last 10 deleted quotes
     if (recentlyDeletedQuotes.length > 10) {
       recentlyDeletedQuotes.shift();
     }
     
+    // Delete the quote
     await quote.deleteOne();
-    res.json({ msg: 'Quote deleted successfully', id: req.params.id });
+    
+    // Return success response with the deleted quote ID
+    res.json({ 
+      msg: 'Quote deleted successfully', 
+      id: req.params.id,
+      deletedAt: quoteWithMeta.deletedAt
+    });
   } catch (err) {
-    console.error(err.message);
+    console.error(`Error in DELETE /api/quotes/${req.params.id}:`, err.message);
+    
+    // Provide detailed error logging
     if (err.kind === 'ObjectId') {
-      return res.status(404).json({ msg: 'Quote not found' });
+      return res.status(404).json({ msg: 'Quote not found - invalid ObjectId format' });
+    } else if (err.name === 'CastError') {
+      return res.status(400).json({ msg: 'Invalid ID format' });
+    } else if (err.name === 'ValidationError') {
+      return res.status(400).json({ msg: err.message });
     }
-    res.status(500).send('Server Error');
+    
+    // Log the full error for debugging
+    console.error('Full error object:', err);
+    res.status(500).json({ msg: 'Server Error', error: err.message });
   }
 });
 
@@ -165,22 +206,37 @@ router.post('/undo', auth, async (req, res) => {
     // Get the most recently deleted quote
     const quoteToRestore = recentlyDeletedQuotes.pop();
     
-    // Create a new quote with the same data
-    const restoredQuote = new Quote({
-      ref: quoteToRestore.ref,
-      speaker: quoteToRestore.speaker,
-      date: quoteToRestore.date,
-      location: quoteToRestore.location,
-      lecture: quoteToRestore.lecture,
-      statements: quoteToRestore.statements,
-      collection: quoteToRestore.collection
-    });
+    // Log the restoration for audit purposes
+    console.log(`Quote restoration requested by user ${req.user.id} for quote: ${quoteToRestore.ref}`);
     
+    // Remove metadata fields that shouldn't be saved to the database
+    const { deletedBy, deletedAt, _id, __v, ...quoteData } = quoteToRestore;
+    
+    // Create a new quote with the same data
+    const restoredQuote = new Quote(quoteData);
+    
+    // Save the restored quote
     await restoredQuote.save();
-    res.json(restoredQuote);
+    
+    // Update the client/public/quotes.json file
+    try {
+      const publicPath = path.resolve(__dirname, '../client/public/quotes.json');
+      const updatedQuotes = await Quote.find({});
+      fs.writeFileSync(publicPath, JSON.stringify(updatedQuotes), 'utf8');
+      console.log(`Updated client/public/quotes.json after quote restoration`);
+    } catch (fileErr) {
+      console.error('Error updating public quotes file:', fileErr);
+      // Continue even if file update fails
+    }
+    
+    // Return the restored quote
+    res.json({
+      msg: 'Quote restored successfully',
+      quote: restoredQuote
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error('Error in POST /api/quotes/undo:', err.message);
+    res.status(500).json({ msg: 'Server Error', error: err.message });
   }
 });
 

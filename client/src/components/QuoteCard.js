@@ -10,31 +10,38 @@ const QuoteCard = ({ quote }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
-  // Check if user is admin
+  // Check if user is authenticated
   useEffect(() => {
-    const checkAdminStatus = async () => {
+    const checkAuthStatus = async () => {
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          // Fix the API URL to include the base URL
-          const res = await axios.get('http://localhost:5000/api/auth', {
+          // Use the API base URL from the quoteService configuration
+          const baseURL = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
+          const res = await axios.get(`${baseURL}/api/auth`, {
             headers: {
               'x-auth-token': token
             }
           });
-          console.log('Admin status check response:', res.data);
-          setIsAdmin(res.data.isAdmin);
+          console.log('Auth status check response:', res.data);
+          // Any authenticated user can delete quotes
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
         }
       } catch (err) {
-        console.error('Error checking admin status:', err);
-        // For development purposes, set isAdmin to true to make delete button visible
-        // In production, this should be setIsAdmin(false)
-        setIsAdmin(true);
+        console.error('Error checking authentication status:', err);
+        setIsAdmin(false);
       }
     };
     
-    checkAdminStatus();
+    checkAuthStatus();
   }, []);
+  
+  // Debug quote object to help troubleshoot
+  useEffect(() => {
+    console.log('Quote object:', quote);
+  }, [quote]);
 
   // Determine the appropriate class based on tags - FIXED to match quotecard tags with more flexibility
   const getCardClass = () => {
@@ -85,12 +92,12 @@ const QuoteCard = ({ quote }) => {
     return ""; // Default class (no special color)
   };
   
-  // Delete quote function with fallback support
+  // Delete quote function with fallback support and improved UX
   const handleDelete = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('You must be logged in to delete quotes');
+        toast.error('You must be logged in to delete quotes');
         return;
       }
       
@@ -98,29 +105,64 @@ const QuoteCard = ({ quote }) => {
       const { deleteQuote } = await import('../utils/quoteService');
       
       // Use the service function which handles fallback
-      await deleteQuote(quote._id);
+      // Use quote.id or quote._id depending on which one is available
+      const quoteId = quote.id || quote._id;
       
-      // Refresh quotes list
-      fetchQuotes();
-      toast.success('Quote deleted successfully');
+      if (!quoteId) {
+        toast.error('Quote ID not found');
+        return;
+      }
+      
+      // Show loading indicator
+      toast.info('Deleting quote...');
+      
+      try {
+        await deleteQuote(quoteId);
+        
+        // Hide the delete confirmation after successful deletion
+        setShowDeleteConfirm(false);
+        
+        // Refresh quotes list
+        fetchQuotes();
+        toast.success('Quote deleted successfully');
+      } catch (deleteErr) {
+        console.error('Error deleting quote:', deleteErr);
+        
+        // Don't show authentication errors twice (already handled in quoteService)
+        if (!deleteErr.message?.includes('Authentication')) {
+          toast.error(deleteErr.message || 'Error deleting quote');
+        }
+        setShowDeleteConfirm(false);
+      }
     } catch (err) {
-      console.error('Error deleting quote:', err);
-      toast.error(err.message || 'Error deleting quote');
+      console.error('Unexpected error in handleDelete:', err);
+      toast.error('An unexpected error occurred');
+      setShowDeleteConfirm(false);
     }
   };
   
-  // Undo delete function
+  // Cancel delete confirmation
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+  };
+  
+  // Undo delete function with improved offline support
   const handleUndo = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('You must be logged in to restore quotes');
+        toast.error('You must be logged in to restore quotes');
         return;
       }
       
+      // Show loading indicator
+      toast.info('Attempting to restore quote...');
+      
       // Try to use API directly for undo operation
       try {
-        await axios.post('/api/quotes/undo', {}, {
+        // Use the API base URL from the quoteService configuration
+        const baseURL = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
+        await axios.post(`${baseURL}/api/quotes/undo`, {}, {
           headers: {
             'x-auth-token': token
           }
@@ -130,9 +172,30 @@ const QuoteCard = ({ quote }) => {
         fetchQuotes();
         toast.success('Quote restored successfully');
       } catch (error) {
-        // If network error, show offline message
+        // If network error, try to restore from local storage
         if (error.code === 'ERR_NETWORK') {
-          toast.error('Cannot restore quotes in offline mode');
+          // Check if we have recently deleted quotes in localStorage
+          const recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
+          
+          if (recentlyDeletedQuotes.length > 0) {
+            // Get the most recently deleted quote
+            const quoteToRestore = recentlyDeletedQuotes[0];
+            
+            // Remove it from the recently deleted list
+            const updatedDeletedQuotes = recentlyDeletedQuotes.slice(1);
+            localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(updatedDeletedQuotes));
+            
+            // Add it back to fallback data
+            const fallbackData = JSON.parse(localStorage.getItem('fallbackQuotesData') || '[]');
+            fallbackData.unshift(quoteToRestore);
+            localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackData));
+            
+            // Refresh quotes list
+            fetchQuotes();
+            toast.success('Quote restored from local storage');
+          } else {
+            toast.error('No recently deleted quotes to restore');
+          }
         } else {
           throw error;
         }
@@ -142,6 +205,7 @@ const QuoteCard = ({ quote }) => {
       toast.error(err.message || 'Error restoring quote');
     }
   };
+
 
   const handleCopy = (e) => {
     e.stopPropagation();
@@ -168,7 +232,7 @@ const QuoteCard = ({ quote }) => {
               <div className="delete-confirm">
                 <span>Delete?</span>
                 <button onClick={handleDelete} className="confirm-yes">Yes</button>
-                <button onClick={() => setShowDeleteConfirm(false)} className="confirm-no">No</button>
+                <button onClick={handleCancelDelete} className="confirm-no">No</button>
               </div>
             ) : (
               <button className="delete-btn" title="Delete quote" onClick={() => setShowDeleteConfirm(true)}>

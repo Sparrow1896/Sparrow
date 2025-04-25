@@ -4,10 +4,39 @@ import { toast } from 'react-toastify';
 // Configure axios with base URL and timeout settings
 const api = axios.create({
   baseURL: process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000',
-  timeout: 10000, // 10 second timeout
+  timeout: 15000, // 15 second timeout for slower connections
   headers: {
     'Content-Type': 'application/json'
+  },
+  // Add retry logic for failed requests
+  retry: 2,
+  retryDelay: 1000
+});
+
+// Add retry functionality to axios
+api.interceptors.response.use(null, async (error) => {
+  const config = error.config;
+  
+  // If we don't have a retry property or we've reached max retries, reject
+  if (!config || !config.retry || config.retryCount >= config.retry) {
+    return Promise.reject(error);
   }
+  
+  // Initialize retry count if not set
+  config.retryCount = config.retryCount || 0;
+  config.retryCount++;
+  
+  // Create a new promise to handle retry delay
+  const delayRetry = new Promise(resolve => {
+    setTimeout(() => {
+      console.log(`Retrying request (${config.retryCount}/${config.retry}): ${config.url}`);
+      resolve();
+    }, config.retryDelay || 1000);
+  });
+  
+  // Wait for the delay, then retry the request
+  await delayRetry;
+  return api(config);
 });
 
 // Add a request interceptor for debugging
@@ -296,28 +325,81 @@ export const addQuote = async (quoteData) => {
  */
 export const deleteQuote = async (quoteId) => {
   try {
+    // Check for authentication
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('Authentication required to delete quotes');
+      throw new Error('Authentication required');
+    }
+    
+    // Store the quote before deletion for potential recovery
+    let quoteToDelete = null;
+    if (fallbackQuotesData) {
+      quoteToDelete = fallbackQuotesData.find(quote => (quote._id === quoteId || quote.id === quoteId));
+    }
+    
     // Try API first
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Authentication required');
+      // Verify the quote exists before attempting to delete
+      if (!quoteId) {
+        throw new Error('Invalid quote ID');
       }
       
-      const response = await api.delete(`/api/quotes/${quoteId}`, {
-        headers: {
-          'x-auth-token': token
+      // Attempt to delete the quote regardless of ID format
+      // The server will handle validation and searching by different identifiers
+      try {
+        const response = await api.delete(`/api/quotes/${quoteId}`, {
+          headers: {
+            'x-auth-token': token
+          }
+        });
+        
+        console.log('Quote deleted successfully:', response.data);
+        return response.data;
+      } catch (apiError) {
+        // Handle specific API errors
+        if (apiError.response) {
+          if (apiError.response.status === 404) {
+            console.error(`API Error: ${apiError.response.status} DELETE /api/quotes/${quoteId}`);
+            throw new Error(`Quote not found with ID: ${quoteId}`);
+          } else if (apiError.response.status === 401) {
+            throw new Error('Authentication required');
+          }
         }
-      });
+        throw apiError;
+      }
       
       // Also remove from local fallback data if it exists
       if (fallbackQuotesData) {
-        fallbackQuotesData = fallbackQuotesData.filter(quote => quote._id !== quoteId);
-        // Update the local quotes.json file with the updated data
+        fallbackQuotesData = fallbackQuotesData.filter(quote => 
+          quote._id !== quoteId && quote.id !== quoteId
+        );
+        // Update the local storage with the updated data
         localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      }
+      
+      // Store the deleted quote for potential undo
+      if (quoteToDelete) {
+        let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
+        recentlyDeletedQuotes.unshift({
+          ...quoteToDelete,
+          deletedAt: new Date().toISOString()
+        });
+        // Keep only the 10 most recent deleted quotes
+        recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
+        localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
       }
       
       return response.data;
     } catch (error) {
+      // Handle authentication errors
+      if (error.response && error.response.status === 401) {
+        toast.error('Your session has expired. Please log in again.');
+        // Clear the invalid token
+        localStorage.removeItem('token');
+        throw new Error('Authentication expired');
+      }
+      
       // If API fails due to network error, use fallback
       if (error.code === 'ERR_NETWORK') {
         console.log('Network error, using fallback for deleting quote');
@@ -327,19 +409,35 @@ export const deleteQuote = async (quoteId) => {
         // Get existing deleted quotes from localStorage or initialize empty array
         let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
         
-        // Add quote ID to deleted list
+        // Add quote ID to deleted list with more metadata
         deletedQuotes.push({
           quoteId,
-          deletedAt: new Date().toISOString()
+          deletedAt: new Date().toISOString(),
+          quoteData: quoteToDelete // Store the full quote data for better recovery
         });
         
         localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
         
         // Also remove from local fallback data if it exists
         if (fallbackQuotesData) {
-          fallbackQuotesData = fallbackQuotesData.filter(quote => quote._id !== quoteId);
+          fallbackQuotesData = fallbackQuotesData.filter(quote => 
+            quote._id !== quoteId && quote.id !== quoteId
+          );
           // Update the local storage with the updated data
           localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+        }
+        
+        // Store the deleted quote for potential undo
+        if (quoteToDelete) {
+          let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
+          recentlyDeletedQuotes.unshift({
+            ...quoteToDelete,
+            deletedAt: new Date().toISOString(),
+            offlineDeleted: true
+          });
+          // Keep only the 10 most recent deleted quotes
+          recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
+          localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
         }
         
         toast.success('Quote marked for deletion. Will sync when connection is restored.');
@@ -349,6 +447,10 @@ export const deleteQuote = async (quoteId) => {
     }
   } catch (error) {
     console.error(`Error deleting quote ${quoteId}:`, error);
+    // Provide more user-friendly error message
+    if (!error.message.includes('Authentication')) {
+      toast.error(`Failed to delete quote: ${error.message || 'Unknown error'}`);
+    }
     throw error;
   }
 };

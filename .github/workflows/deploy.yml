@@ -20,6 +20,16 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     
+    - name: Create environment file
+      run: |
+        echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" > .env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+        echo "NODE_ENV=production" >> .env
+    
+    - name: Create client environment file
+      run: |
+        echo "REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL || '' }}" > ./client/.env
+    
     - name: Install server dependencies
       run: npm ci
     

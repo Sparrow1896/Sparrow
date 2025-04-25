@@ -19,9 +19,14 @@ app.use(express.json());
 
 // Configure CORS properly - this should be before routes
 app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true
+  origin: ['http://localhost:3000', 'http://localhost:5501', 'http://127.0.0.1:5501'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
 }));
+
+// Add OPTIONS handling for preflight requests
+app.options('*', cors());
 
 // Connect to MongoDB
 const mongoURI = process.env.MONGODB_URI;
@@ -83,6 +88,11 @@ async function initializeDatabase() {
     console.error('Error initializing database:', err);
   }
 }
+
+// Add health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'API is running' });
+});
 
 // Use Routes
 app.use('/api/quotes', quotesRoutes);

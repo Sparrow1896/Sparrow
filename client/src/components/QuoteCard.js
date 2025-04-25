@@ -92,7 +92,7 @@ const QuoteCard = ({ quote }) => {
     return ""; // Default class (no special color)
   };
   
-  // Delete quote function with fallback support and improved UX
+  // Delete quote function with enhanced error handling and ID format support
   const handleDelete = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -104,20 +104,37 @@ const QuoteCard = ({ quote }) => {
       // Import the deleteQuote function from quoteService
       const { deleteQuote } = await import('../utils/quoteService');
       
-      // Use the service function which handles fallback
-      // Use quote.id or quote._id depending on which one is available
-      const quoteId = quote.id || quote._id;
+      // Enhanced ID detection - try multiple ID formats
+      // First check for MongoDB ObjectId (_id)
+      let quoteId = quote._id;
       
+      // If not found, try other ID formats
       if (!quoteId) {
-        toast.error('Quote ID not found');
+        // Try regular id property
+        quoteId = quote.id;
+        
+        // If still not found, check if there's a statement ID we can use
+        if (!quoteId && quote.statements && quote.statements.length > 0) {
+          // Use the first statement's ID as a fallback
+          quoteId = quote.statements[0].id;
+        }
+      }
+      
+      // Final validation
+      if (!quoteId) {
+        console.error('Quote ID not found in quote object:', quote);
+        toast.error('Quote ID not found - cannot delete');
         return;
       }
+      
+      console.log(`Deleting quote with ID: ${quoteId}`);
       
       // Show loading indicator
       toast.info('Deleting quote...');
       
       try {
-        await deleteQuote(quoteId);
+        const result = await deleteQuote(quoteId);
+        console.log('Delete result:', result);
         
         // Hide the delete confirmation after successful deletion
         setShowDeleteConfirm(false);
@@ -128,10 +145,18 @@ const QuoteCard = ({ quote }) => {
       } catch (deleteErr) {
         console.error('Error deleting quote:', deleteErr);
         
-        // Don't show authentication errors twice (already handled in quoteService)
-        if (!deleteErr.message?.includes('Authentication')) {
+        // Enhanced error handling
+        if (deleteErr.message?.includes('not found')) {
+          toast.error(`Quote not found. It may have been already deleted.`);
+        } else if (deleteErr.message?.includes('Authentication') || 
+                  deleteErr.message?.includes('token')) {
+          // Don't show authentication errors twice (already handled in quoteService)
+          // Just log them
+          console.log('Authentication error during delete:', deleteErr.message);
+        } else {
           toast.error(deleteErr.message || 'Error deleting quote');
         }
+        
         setShowDeleteConfirm(false);
       }
     } catch (err) {

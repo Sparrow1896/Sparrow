@@ -16,16 +16,16 @@ const api = axios.create({
 // Add retry functionality to axios
 api.interceptors.response.use(null, async (error) => {
   const config = error.config;
-  
+
   // If we don't have a retry property or we've reached max retries, reject
   if (!config || !config.retry || config.retryCount >= config.retry) {
     return Promise.reject(error);
   }
-  
+
   // Initialize retry count if not set
   config.retryCount = config.retryCount || 0;
   config.retryCount++;
-  
+
   // Create a new promise to handle retry delay
   const delayRetry = new Promise(resolve => {
     setTimeout(() => {
@@ -33,7 +33,7 @@ api.interceptors.response.use(null, async (error) => {
       resolve();
     }, config.retryDelay || 1000);
   });
-  
+
   // Wait for the delay, then retry the request
   await delayRetry;
   return api(config);
@@ -84,21 +84,21 @@ const loadQuotesFromFile = async () => {
         // Continue to fetch from file if parsing fails
       }
     }
-    
+
     // If no cached data or parsing failed, load from file
     if (fallbackQuotesData) {
       return fallbackQuotesData; // Return cached data if available
     }
-    
+
     console.log('Loading quotes from local file...');
     const response = await fetch('/quotes.json');
     if (!response.ok) {
       throw new Error(`Failed to load local quotes file: ${response.status}`);
     }
-    
+
     const data = await response.json();
     console.log('Quotes loaded from local file:', data.length);
-    
+
     // Cache the data for future use
     fallbackQuotesData = data;
     localStorage.setItem('fallbackQuotesData', JSON.stringify(data));
@@ -113,37 +113,38 @@ const loadQuotesFromFile = async () => {
  * Fetch all quotes from the API with fallback to local file
  * @returns {Promise} Promise that resolves to the quotes data
  */
-export const fetchAllQuotes = async () => {
+const fetchAllQuotes = async () => {
   try {
     // If we're already in fallback mode, go straight to file
     if (usingFallbackData) {
       console.log('Using fallback data source (local file)');
       return await loadQuotesFromFile();
     }
-    
+
     // Try the API first with retry logic
     let retries = 2;
     let lastError = null;
-    
+
     while (retries > 0) {
       try {
         const response = await api.get('/api/quotes');
         console.log('Quotes fetched successfully from API:', response.data.length);
         usingFallbackData = false; // Reset fallback flag if API works
-        
+
         // Update fallback data with the latest from API
         fallbackQuotesData = response.data;
         localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
-        
+
         // Check for offline changes that need to be synced
         const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
         const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
-        
+
         if (offlineQuotes.length > 0 || deletedQuotes.length > 0) {
-          console.log('Found offline changes, attempting to sync...');
-          syncOfflineChanges();
+          console.log('Found offline changes, will sync later...');
+          // We'll sync in a separate call to avoid circular dependencies
+          setTimeout(() => syncOfflineChanges(), 100);
         }
-        
+
         return response.data;
       } catch (error) {
         lastError = error;
@@ -158,7 +159,7 @@ export const fetchAllQuotes = async () => {
         }
       }
     }
-    
+
     // If we've exhausted all retries, switch to fallback
     console.log('Switching to fallback data source after failed API attempts');
     usingFallbackData = true;
@@ -166,7 +167,7 @@ export const fetchAllQuotes = async () => {
     return await loadQuotesFromFile();
   } catch (error) {
     console.error('Error fetching quotes:', error);
-    
+
     // Try fallback as last resort
     try {
       console.log('Attempting to load from fallback source');
@@ -186,7 +187,7 @@ export const fetchAllQuotes = async () => {
  * @param {string} collection - The collection name to filter by
  * @returns {Promise} Promise that resolves to the filtered quotes data
  */
-export const fetchQuotesByCollection = async (collection) => {
+const fetchQuotesByCollection = async (collection) => {
   try {
     // If we're in fallback mode, filter from local data
     if (usingFallbackData) {
@@ -194,7 +195,7 @@ export const fetchQuotesByCollection = async (collection) => {
       const allQuotes = await loadQuotesFromFile();
       return allQuotes.filter(quote => quote.collection === collection);
     }
-    
+
     // Try API first
     try {
       const response = await api.get(`/api/quotes?collection=${collection}`);
@@ -221,7 +222,7 @@ export const fetchQuotesByCollection = async (collection) => {
  * @param {string} searchTerm - The search term
  * @returns {Promise} Promise that resolves to the search results
  */
-export const searchQuotes = async (searchTerm) => {
+const searchQuotes = async (searchTerm) => {
   try {
     // If we're in fallback mode, search in local data
     if (usingFallbackData) {
@@ -230,14 +231,14 @@ export const searchQuotes = async (searchTerm) => {
       const term = searchTerm.toLowerCase();
       return allQuotes.filter(quote => {
         // Simple search implementation for fallback mode
-        const statementMatches = quote.statements.some(s => 
+        const statementMatches = quote.statements.some(s =>
           s.statement.toLowerCase().includes(term));
         const refMatch = quote.ref.toLowerCase().includes(term);
         const speakerMatch = quote.speaker && quote.speaker.toLowerCase().includes(term);
         return statementMatches || refMatch || speakerMatch;
       });
     }
-    
+
     // Try API first
     try {
       const response = await api.get(`/api/quotes?search=${encodeURIComponent(searchTerm)}`);
@@ -251,7 +252,7 @@ export const searchQuotes = async (searchTerm) => {
         const allQuotes = await loadQuotesFromFile();
         const term = searchTerm.toLowerCase();
         return allQuotes.filter(quote => {
-          const statementMatches = quote.statements.some(s => 
+          const statementMatches = quote.statements.some(s =>
             s.statement.toLowerCase().includes(term));
           const refMatch = quote.ref.toLowerCase().includes(term);
           const speakerMatch = quote.speaker && quote.speaker.toLowerCase().includes(term);
@@ -271,7 +272,7 @@ export const searchQuotes = async (searchTerm) => {
  * @param {Object} quoteData - The quote data to add
  * @returns {Promise} Promise that resolves to the added quote
  */
-export const addQuote = async (quoteData) => {
+const addQuote = async (quoteData) => {
   try {
     // Try API first
     try {
@@ -279,7 +280,7 @@ export const addQuote = async (quoteData) => {
       if (!token) {
         throw new Error('Authentication required');
       }
-      
+
       const response = await api.post('/api/quotes', quoteData, {
         headers: {
           'x-auth-token': token
@@ -292,10 +293,10 @@ export const addQuote = async (quoteData) => {
         console.log('Network error, using fallback for adding quote');
         usingFallbackData = true;
         toast.info('Using offline mode: quote saved to local storage');
-        
+
         // Get existing quotes from localStorage or initialize empty array
         let localQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
-        
+
         // Add new quote with temporary ID
         const newQuote = {
           ...quoteData,
@@ -303,10 +304,10 @@ export const addQuote = async (quoteData) => {
           createdAt: new Date().toISOString(),
           offlineCreated: true
         };
-        
+
         localQuotes.push(newQuote);
         localStorage.setItem('offlineQuotes', JSON.stringify(localQuotes));
-        
+
         toast.success('Quote saved locally. Will sync when connection is restored.');
         return newQuote;
       }
@@ -323,7 +324,7 @@ export const addQuote = async (quoteData) => {
  * @param {string} quoteId - The ID of the quote to delete
  * @returns {Promise} Promise that resolves when the quote is deleted
  */
-export const deleteQuote = async (quoteId) => {
+const deleteQuote = async (quoteId) => {
   try {
     // Check for authentication
     const token = localStorage.getItem('token');
@@ -331,125 +332,189 @@ export const deleteQuote = async (quoteId) => {
       toast.error('Authentication required to delete quotes');
       throw new Error('Authentication required');
     }
-    
+
+    // Validate quote ID
+    if (!quoteId) {
+      toast.error('Invalid quote ID');
+      throw new Error('Invalid quote ID');
+    }
+
+    console.log(`Attempting to delete quote with ID: ${quoteId}`);
+
     // Store the quote before deletion for potential recovery
     let quoteToDelete = null;
     if (fallbackQuotesData) {
-      quoteToDelete = fallbackQuotesData.find(quote => (quote._id === quoteId || quote.id === quoteId));
+      // Improved matching to handle different ID formats
+      quoteToDelete = fallbackQuotesData.find(quote => {
+        // Check main IDs
+        if (quote._id === quoteId || quote.id === quoteId) return true;
+
+        // Check statement IDs if available
+        if (quote.statements && Array.isArray(quote.statements)) {
+          return quote.statements.some(stmt => stmt.id === quoteId);
+        }
+
+        return false;
+      });
     }
-    
+
     // Try API first
     try {
-      // Verify the quote exists before attempting to delete
-      if (!quoteId) {
-        throw new Error('Invalid quote ID');
-      }
-      
       // Attempt to delete the quote regardless of ID format
       // The server will handle validation and searching by different identifiers
-      try {
-        const response = await api.delete(`/api/quotes/${quoteId}`, {
-          headers: {
-            'x-auth-token': token
-          }
-        });
-        
-        console.log('Quote deleted successfully:', response.data);
-        return response.data;
-      } catch (apiError) {
-        // Handle specific API errors
-        if (apiError.response) {
-          if (apiError.response.status === 404) {
-            console.error(`API Error: ${apiError.response.status} DELETE /api/quotes/${quoteId}`);
-            throw new Error(`Quote not found with ID: ${quoteId}`);
-          } else if (apiError.response.status === 401) {
-            throw new Error('Authentication required');
-          }
+      const response = await api.delete(`/api/quotes/${quoteId}`, {
+        headers: {
+          'x-auth-token': token
         }
-        throw apiError;
-      }
-      
+      });
+
+      console.log('Quote deleted successfully:', response.data);
+
+      // Get the actual MongoDB ID from the response
+      const actualId = response.data.id || quoteId;
+
       // Also remove from local fallback data if it exists
       if (fallbackQuotesData) {
-        fallbackQuotesData = fallbackQuotesData.filter(quote => 
-          quote._id !== quoteId && quote.id !== quoteId
-        );
+        fallbackQuotesData = fallbackQuotesData.filter(quote => {
+          // Remove by any matching ID
+          if (quote._id === actualId || quote._id === quoteId ||
+            quote.id === actualId || quote.id === quoteId) {
+            return false;
+          }
+
+          // Also check statement IDs
+          if (quote.statements && Array.isArray(quote.statements)) {
+            return !quote.statements.some(stmt => stmt.id === quoteId);
+          }
+
+          return true;
+        });
+
         // Update the local storage with the updated data
         localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
       }
-      
+
       // Store the deleted quote for potential undo
       if (quoteToDelete) {
         let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
         recentlyDeletedQuotes.unshift({
           ...quoteToDelete,
-          deletedAt: new Date().toISOString()
+          deletedAt: new Date().toISOString(),
+          deletedId: actualId // Store the ID used for deletion
         });
         // Keep only the 10 most recent deleted quotes
         recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
         localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
       }
-      
+
       return response.data;
-    } catch (error) {
-      // Handle authentication errors
-      if (error.response && error.response.status === 401) {
-        toast.error('Your session has expired. Please log in again.');
-        // Clear the invalid token
-        localStorage.removeItem('token');
-        throw new Error('Authentication expired');
-      }
-      
-      // If API fails due to network error, use fallback
-      if (error.code === 'ERR_NETWORK') {
-        console.log('Network error, using fallback for deleting quote');
+    } catch (apiError) {
+      // Enhanced error handling
+      console.error('Error deleting quote:', apiError);
+
+      // Handle specific API errors
+      if (apiError.response) {
+        if (apiError.response.status === 404) {
+          console.error(`API Error: ${apiError.response.status} DELETE /api/quotes/${quoteId}`);
+          throw new Error(`Quote not found with ID: ${quoteId}`);
+        } else if (apiError.response.status === 401) {
+          toast.error('Your session has expired. Please log in again.');
+          localStorage.removeItem('token'); // Clear invalid token
+          throw new Error('Authentication required');
+        } else if (apiError.response.data && apiError.response.data.msg) {
+          // Use the server's error message if available
+          throw new Error(apiError.response.data.msg);
+        }
+      } else if (apiError.code === 'ERR_NETWORK') {
+        // Handle offline mode
+        toast.info('Network unavailable. Operating in offline mode.');
         usingFallbackData = true;
-        toast.info('Using offline mode: deletion tracked locally');
-        
-        // Get existing deleted quotes from localStorage or initialize empty array
-        let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
-        
-        // Add quote ID to deleted list with more metadata
-        deletedQuotes.push({
-          quoteId,
-          deletedAt: new Date().toISOString(),
-          quoteData: quoteToDelete // Store the full quote data for better recovery
-        });
-        
-        localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
-        
-        // Also remove from local fallback data if it exists
-        if (fallbackQuotesData) {
-          fallbackQuotesData = fallbackQuotesData.filter(quote => 
+
+        // Implement offline deletion
+        if (fallbackQuotesData && quoteToDelete) {
+          // Remove from fallback data
+          fallbackQuotesData = fallbackQuotesData.filter(quote =>
             quote._id !== quoteId && quote.id !== quoteId
           );
-          // Update the local storage with the updated data
           localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
-        }
-        
-        // Store the deleted quote for potential undo
-        if (quoteToDelete) {
+
+          // Track offline deletions for later sync
+          let offlineDeletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+          offlineDeletedQuotes.push({
+            id: quoteId,
+            deletedAt: new Date().toISOString()
+          });
+          localStorage.setItem('offlineDeletedQuotes', JSON.stringify(offlineDeletedQuotes));
+
+          // Store for undo
           let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
           recentlyDeletedQuotes.unshift({
             ...quoteToDelete,
             deletedAt: new Date().toISOString(),
             offlineDeleted: true
           });
-          // Keep only the 10 most recent deleted quotes
           recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
           localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
+
+          return { msg: 'Quote deleted in offline mode', id: quoteId };
+        } else {
+          throw new Error('Cannot delete quote in offline mode: quote not found locally');
         }
-        
-        toast.success('Quote marked for deletion. Will sync when connection is restored.');
-        return { success: true, message: 'Quote marked for deletion locally' };
       }
-      throw error;
+
+      throw apiError;
     }
   } catch (error) {
-    console.error(`Error deleting quote ${quoteId}:`, error);
-    // Provide more user-friendly error message
-    if (!error.message.includes('Authentication')) {
-      toast.error(`Failed to delete quote: ${error.message || 'Unknown error'}`);
+    // Handle authentication errors
+    if (error.response && error.response.status === 401) {
+      toast.error('Your session has expired. Please log in again.');
+      // Clear the invalid token
+      localStorage.removeItem('token');
+      throw new Error('Authentication expired');
+    }
+
+    // If API fails due to network error, use fallback
+    if (error.code === 'ERR_NETWORK') {
+      console.log('Network error, using fallback for deleting quote');
+      usingFallbackData = true;
+      toast.info('Using offline mode: deletion tracked locally');
+
+      // Get existing deleted quotes from localStorage or initialize empty array
+      let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+
+      // Add quote ID to deleted list with more metadata
+      deletedQuotes.push({
+        quoteId,
+        deletedAt: new Date().toISOString(),
+        quoteData: quoteToDelete // Store the full quote data for better recovery
+      });
+
+      localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
+
+      // Also remove from local fallback data if it exists
+      if (fallbackQuotesData) {
+        fallbackQuotesData = fallbackQuotesData.filter(quote =>
+          quote._id !== quoteId && quote.id !== quoteId
+        );
+        // Update the local storage with the updated data
+        localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      }
+
+      // Store the deleted quote for potential undo
+      if (quoteToDelete) {
+        let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
+        recentlyDeletedQuotes.unshift({
+          ...quoteToDelete,
+          deletedAt: new Date().toISOString(),
+          offlineDeleted: true
+        });
+        // Keep only the 10 most recent deleted quotes
+        recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
+        localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
+      }
+
+      toast.success('Quote marked for deletion. Will sync when connection is restored.');
+      return { success: true, message: 'Quote marked for deletion locally' };
     }
     throw error;
   }
@@ -459,7 +524,7 @@ export const deleteQuote = async (quoteId) => {
  * Sync offline changes when connection is restored
  * @returns {Promise} Promise that resolves when sync is complete
  */
-export const syncOfflineChanges = async () => {
+const syncOfflineChanges = async () => {
   try {
     // Check if we have a connection
     try {
@@ -468,12 +533,12 @@ export const syncOfflineChanges = async () => {
       console.log('Still offline, cannot sync changes');
       return { success: false, message: 'Still offline' };
     }
-    
+
     const token = localStorage.getItem('token');
     if (!token) {
       return { success: false, message: 'Authentication required for sync' };
     }
-    
+
     // Sync new quotes
     const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
     if (offlineQuotes.length > 0) {
@@ -482,7 +547,7 @@ export const syncOfflineChanges = async () => {
         try {
           // Remove temporary properties
           const { _id, offlineCreated, ...quoteData } = quote;
-          
+
           await api.post('/api/quotes', quoteData, {
             headers: { 'x-auth-token': token }
           });
@@ -491,11 +556,11 @@ export const syncOfflineChanges = async () => {
           console.error('Error syncing offline quote:', error);
         }
       }
-      
+
       // Clear synced quotes
       localStorage.removeItem('offlineQuotes');
     }
-    
+
     // Sync deleted quotes
     const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
     if (deletedQuotes.length > 0) {
@@ -510,11 +575,11 @@ export const syncOfflineChanges = async () => {
           console.error(`Error syncing deleted quote ${quoteId}:`, error);
         }
       }
-      
+
       // Clear synced deletions
       localStorage.removeItem('offlineDeletedQuotes');
     }
-    
+
     // Refresh fallback data after sync
     try {
       const response = await api.get('/api/quotes');
@@ -524,7 +589,7 @@ export const syncOfflineChanges = async () => {
     } catch (error) {
       console.error('Error refreshing local cache:', error);
     }
-    
+
     usingFallbackData = false;
     toast.success('Offline changes synced successfully');
     return { success: true, message: 'Sync completed' };
@@ -538,7 +603,7 @@ export const syncOfflineChanges = async () => {
  * Get the count of quotes in different sources
  * @returns {Promise} Promise that resolves to an object with counts
  */
-export const getQuoteCounts = async () => {
+const getQuoteCounts = async () => {
   try {
     const counts = {
       mongodb: 0,
@@ -547,7 +612,7 @@ export const getQuoteCounts = async () => {
       offlineQuotes: 0,
       offlineDeletedQuotes: 0
     };
-    
+
     // Try to get MongoDB count
     try {
       const response = await api.get('/api/quotes/count');
@@ -555,7 +620,7 @@ export const getQuoteCounts = async () => {
     } catch (error) {
       console.log('Could not get MongoDB quote count:', error.message);
     }
-    
+
     // Get local file count
     try {
       const response = await fetch('/quotes.json');
@@ -566,19 +631,19 @@ export const getQuoteCounts = async () => {
     } catch (error) {
       console.log('Could not get local file quote count:', error.message);
     }
-    
+
     // Get localStorage counts
     try {
       const cachedData = localStorage.getItem('fallbackQuotesData');
       if (cachedData) {
         counts.localStorage = JSON.parse(cachedData).length;
       }
-      
+
       const offlineQuotes = localStorage.getItem('offlineQuotes');
       if (offlineQuotes) {
         counts.offlineQuotes = JSON.parse(offlineQuotes).length;
       }
-      
+
       const offlineDeletedQuotes = localStorage.getItem('offlineDeletedQuotes');
       if (offlineDeletedQuotes) {
         counts.offlineDeletedQuotes = JSON.parse(offlineDeletedQuotes).length;
@@ -586,7 +651,7 @@ export const getQuoteCounts = async () => {
     } catch (error) {
       console.log('Could not get localStorage quote counts:', error.message);
     }
-    
+
     return counts;
   } catch (error) {
     console.error('Error getting quote counts:', error);
@@ -594,7 +659,8 @@ export const getQuoteCounts = async () => {
   }
 };
 
-export default {
+// Export as named exports to avoid circular dependency issues
+export {
   fetchAllQuotes,
   fetchQuotesByCollection,
   searchQuotes,

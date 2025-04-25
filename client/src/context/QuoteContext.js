@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useReducer, useContext } from 'react';
 import axios from 'axios';
-import { fetchAllQuotes as fetchQuotesService } from '../utils/quoteService';
+import { fetchAllQuotes as fetchQuotesService, syncOfflineChanges as syncOfflineChangesService } from '../utils/quoteService';
 import { toast } from 'react-toastify';
 
 // Create context
@@ -165,9 +165,8 @@ export const QuoteProvider = ({ children }) => {
   // Attempt to sync offline changes when connection is restored
   const syncOfflineChanges = async () => {
     try {
-      // Import dynamically to avoid circular dependencies
-      const { syncOfflineChanges } = await import('../utils/quoteService');
-      const result = await syncOfflineChanges();
+      // Use the imported function directly instead of dynamic import
+      const result = await syncOfflineChangesService();
       
       if (result.success) {
         // Refresh quotes after successful sync

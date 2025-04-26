@@ -32,7 +32,7 @@ async function importQuotes() {
     }
 
     // Read quotes from JSON file
-    const quotesPath = path.resolve(__dirname, '../finalapp/quotes.json');
+    const quotesPath = path.resolve(__dirname, '../client/public/quotes.json');
     const quotesData = fs.readFileSync(quotesPath, 'utf8');
     const quotes = JSON.parse(quotesData);
 

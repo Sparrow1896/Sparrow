@@ -132,29 +132,48 @@ router.delete('/:id', auth, async (req, res) => {
     const id = req.params.id;
     let quote;
     
-    // Try to find the quote by ID first
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      quote = await Quote.findById(id);
+    // Enhanced logging for debugging
+    console.log(`Delete quote request received for ID: ${id}`);
+    console.log(`ID type: ${typeof id}, ID length: ${id.length}`);
+    
+    // Try to find the quote by ID first - handle both string and ObjectId formats
+    try {
+      // Check if the ID is a valid ObjectId
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        console.log(`ID ${id} is a valid ObjectId, searching by _id`);
+        quote = await Quote.findById(id);
+      }
+    } catch (idErr) {
+      console.error(`Error checking ObjectId validity: ${idErr.message}`);
+      // Continue to other search methods
     }
     
     // If not found by ID, try to find by other identifiers
     if (!quote) {
-      // Try to find by reference or other fields
-      quote = await Quote.findOne({
-        $or: [
-          { ref: id },
-          { 'statements.statement': id }
-        ]
-      });
+      console.log(`Quote not found by _id, trying alternative search methods`);
+      // Try to find by reference or statement content
+      try {
+        quote = await Quote.findOne({
+          $or: [
+            { ref: id },
+            { 'statements.statement': id },
+            // Also try to match by statement ID
+            { 'statements.id': id }
+          ]
+        });
+      } catch (searchErr) {
+        console.error(`Error in alternative search: ${searchErr.message}`);
+      }
     }
     
     if (!quote) {
-      console.log(`Quote not found with ID: ${id}`);
+      console.log(`Quote not found with identifier: ${id}`);
       return res.status(404).json({ msg: 'Quote not found' });
     }
     
     // Log the deletion for audit purposes
-    console.log(`Quote deletion requested by user ${req.user.id} for quote ID: ${req.params.id}`);
+    console.log(`Quote found! ID: ${quote._id}, Ref: ${quote.ref}`);
+    console.log(`Quote deletion requested by user ${req.user.id}`);
     
     // Store the quote for potential undo operation with user info
     const quoteWithMeta = quote.toObject();
@@ -173,7 +192,8 @@ router.delete('/:id', auth, async (req, res) => {
     // Return success response with the deleted quote ID
     res.json({ 
       msg: 'Quote deleted successfully', 
-      id: req.params.id,
+      id: quote._id, // Return the actual MongoDB _id for consistency
+      originalId: req.params.id, // Also return the original ID that was passed
       deletedAt: quoteWithMeta.deletedAt
     });
   } catch (err) {

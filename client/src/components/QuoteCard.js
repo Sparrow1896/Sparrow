@@ -141,9 +141,12 @@ const QuoteCard = ({ quote }) => {
         
         // Refresh quotes list
         fetchQuotes();
-        toast.success('Quote deleted successfully');
+        
+        // Success message is now handled by the deleteQuote function
       } catch (deleteErr) {
         console.error('Error deleting quote:', deleteErr);
+        
+        // Only show error toast if deleteQuote didn't already show one
         
         // Enhanced error handling
         if (deleteErr.message?.includes('not found')) {

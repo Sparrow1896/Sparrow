@@ -29,9 +29,9 @@ async function syncQuotes() {
     console.log(`MongoDB contains ${dbQuotes.length} quotes`);
     
     // Get quotes from finalapp/quotes.json
-    const finalappPath = path.resolve(__dirname, '../finalapp/quotes.json');
+    const finalappPath = path.resolve(__dirname, '../client/public/quotes.json');
     const finalappQuotes = JSON.parse(fs.readFileSync(finalappPath, 'utf8'));
-    console.log(`finalapp/quotes.json contains ${finalappQuotes.length} quotes`);
+    console.log(`client/public/quotes.json contains ${finalappQuotes.length} quotes`);
     
     // Get quotes from client/public/quotes.json
     const publicPath = path.resolve(__dirname, '../client/public/quotes.json');

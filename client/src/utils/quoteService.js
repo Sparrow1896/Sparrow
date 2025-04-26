@@ -351,15 +351,28 @@ const deleteQuote = async (quoteId) => {
 
         // Check statement IDs if available
         if (quote.statements && Array.isArray(quote.statements)) {
-          return quote.statements.some(stmt => stmt.id === quoteId);
+          return quote.statements.some(stmt => stmt.id === quoteId || stmt._id === quoteId);
         }
 
         return false;
       });
     }
 
+    // If we're already in fallback mode or can't reach the server, go straight to offline deletion
+    if (usingFallbackData) {
+      return handleOfflineDeletion(quoteId, quoteToDelete);
+    }
+
     // Try API first
     try {
+      // First check if we can reach the server
+      try {
+        await api.get('/api/health');
+      } catch (healthError) {
+        console.log('Server unreachable, switching to offline mode');
+        return handleOfflineDeletion(quoteId, quoteToDelete);
+      }
+
       // Attempt to delete the quote regardless of ID format
       // The server will handle validation and searching by different identifiers
       const response = await api.delete(`/api/quotes/${quoteId}`, {
@@ -384,7 +397,7 @@ const deleteQuote = async (quoteId) => {
 
           // Also check statement IDs
           if (quote.statements && Array.isArray(quote.statements)) {
-            return !quote.statements.some(stmt => stmt.id === quoteId);
+            return !quote.statements.some(stmt => stmt.id === quoteId || stmt._id === quoteId);
           }
 
           return true;
@@ -407,6 +420,7 @@ const deleteQuote = async (quoteId) => {
         localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
       }
 
+      toast.success('Quote deleted successfully');
       return response.data;
     } catch (apiError) {
       // Enhanced error handling
@@ -416,6 +430,13 @@ const deleteQuote = async (quoteId) => {
       if (apiError.response) {
         if (apiError.response.status === 404) {
           console.error(`API Error: ${apiError.response.status} DELETE /api/quotes/${quoteId}`);
+          
+          // If the quote is not found on the server but exists locally, delete it locally
+          if (quoteToDelete) {
+            toast.info('Quote not found on server but exists locally. Deleting from local storage.');
+            return handleOfflineDeletion(quoteId, quoteToDelete);
+          }
+          
           throw new Error(`Quote not found with ID: ${quoteId}`);
         } else if (apiError.response.status === 401) {
           toast.error('Your session has expired. Please log in again.');
@@ -428,38 +449,7 @@ const deleteQuote = async (quoteId) => {
       } else if (apiError.code === 'ERR_NETWORK') {
         // Handle offline mode
         toast.info('Network unavailable. Operating in offline mode.');
-        usingFallbackData = true;
-
-        // Implement offline deletion
-        if (fallbackQuotesData && quoteToDelete) {
-          // Remove from fallback data
-          fallbackQuotesData = fallbackQuotesData.filter(quote =>
-            quote._id !== quoteId && quote.id !== quoteId
-          );
-          localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
-
-          // Track offline deletions for later sync
-          let offlineDeletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
-          offlineDeletedQuotes.push({
-            id: quoteId,
-            deletedAt: new Date().toISOString()
-          });
-          localStorage.setItem('offlineDeletedQuotes', JSON.stringify(offlineDeletedQuotes));
-
-          // Store for undo
-          let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
-          recentlyDeletedQuotes.unshift({
-            ...quoteToDelete,
-            deletedAt: new Date().toISOString(),
-            offlineDeleted: true
-          });
-          recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
-          localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
-
-          return { msg: 'Quote deleted in offline mode', id: quoteId };
-        } else {
-          throw new Error('Cannot delete quote in offline mode: quote not found locally');
-        }
+        return handleOfflineDeletion(quoteId, quoteToDelete);
       }
 
       throw apiError;
@@ -476,49 +466,100 @@ const deleteQuote = async (quoteId) => {
     // If API fails due to network error, use fallback
     if (error.code === 'ERR_NETWORK') {
       console.log('Network error, using fallback for deleting quote');
-      usingFallbackData = true;
-      toast.info('Using offline mode: deletion tracked locally');
-
-      // Get existing deleted quotes from localStorage or initialize empty array
-      let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
-
-      // Add quote ID to deleted list with more metadata
-      deletedQuotes.push({
-        quoteId,
-        deletedAt: new Date().toISOString(),
-        quoteData: quoteToDelete // Store the full quote data for better recovery
-      });
-
-      localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
-
-      // Also remove from local fallback data if it exists
-      if (fallbackQuotesData) {
-        fallbackQuotesData = fallbackQuotesData.filter(quote =>
-          quote._id !== quoteId && quote.id !== quoteId
-        );
-        // Update the local storage with the updated data
-        localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
-      }
-
-      // Store the deleted quote for potential undo
-      if (quoteToDelete) {
-        let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
-        recentlyDeletedQuotes.unshift({
-          ...quoteToDelete,
-          deletedAt: new Date().toISOString(),
-          offlineDeleted: true
-        });
-        // Keep only the 10 most recent deleted quotes
-        recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
-        localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
-      }
-
-      toast.success('Quote marked for deletion. Will sync when connection is restored.');
-      return { success: true, message: 'Quote marked for deletion locally' };
+      return handleOfflineDeletion(quoteId, quoteToDelete);
     }
+    
+    console.error('Error deleting quote ' + quoteId + ':', error);
     throw error;
   }
 };
+
+/**
+ * Handle offline deletion of a quote
+ * @param {string} quoteId - The ID of the quote to delete
+ * @param {Object} quoteToDelete - The quote object to delete (if found)
+ * @returns {Promise} Promise that resolves when the quote is deleted locally
+ */
+const handleOfflineDeletion = (quoteId, quoteToDelete) => {
+  usingFallbackData = true;
+  toast.info('Using offline mode: deletion tracked locally');
+
+  // If we don't have the quote data but have the ID, try to find it in fallback data
+  if (!quoteToDelete && fallbackQuotesData) {
+    quoteToDelete = fallbackQuotesData.find(quote => {
+      // Check main IDs
+      if (quote._id === quoteId || quote.id === quoteId) return true;
+
+      // Check statement IDs if available
+      if (quote.statements && Array.isArray(quote.statements)) {
+        return quote.statements.some(stmt => stmt.id === quoteId || stmt._id === quoteId);
+      }
+
+      return false;
+    });
+  }
+
+  // Get existing deleted quotes from localStorage or initialize empty array
+  let deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+
+  // Add quote ID to deleted list with more metadata
+  deletedQuotes.push({
+    id: quoteId,
+    deletedAt: new Date().toISOString(),
+    quoteData: quoteToDelete // Store the full quote data for better recovery
+  });
+
+  localStorage.setItem('offlineDeletedQuotes', JSON.stringify(deletedQuotes));
+
+  // Also remove from local fallback data if it exists
+  if (fallbackQuotesData) {
+    const originalLength = fallbackQuotesData.length;
+    fallbackQuotesData = fallbackQuotesData.filter(quote => {
+      // Remove by any matching ID
+      if (quote._id === quoteId || quote.id === quoteId) {
+        return false;
+      }
+
+      // Also check statement IDs
+      if (quote.statements && Array.isArray(quote.statements)) {
+        return !quote.statements.some(stmt => stmt.id === quoteId || stmt._id === quoteId);
+      }
+
+      return true;
+    });
+
+    // Update the local storage with the updated data
+    localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+    
+    // Check if we actually removed anything
+    if (originalLength > fallbackQuotesData.length) {
+      console.log(`Removed quote with ID ${quoteId} from local storage`);
+    } else {
+      console.log(`No quote with ID ${quoteId} found in local storage`);
+    }
+  }
+
+  // Store the deleted quote for potential undo
+  if (quoteToDelete) {
+    let recentlyDeletedQuotes = JSON.parse(localStorage.getItem('recentlyDeletedQuotes') || '[]');
+    recentlyDeletedQuotes.unshift({
+      ...quoteToDelete,
+      deletedAt: new Date().toISOString(),
+      offlineDeleted: true
+    });
+    // Keep only the 10 most recent deleted quotes
+    recentlyDeletedQuotes = recentlyDeletedQuotes.slice(0, 10);
+    localStorage.setItem('recentlyDeletedQuotes', JSON.stringify(recentlyDeletedQuotes));
+  }
+
+  toast.success('Quote marked for deletion. Will sync when connection is restored.');
+  return { success: true, message: 'Quote marked for deletion locally', id: quoteId };
+};
+
+/**
+ * Sync offline changes when connection is restored
+ * @returns {Promise} Promise that resolves when sync is complete
+ */
 
 /**
  * Sync offline changes when connection is restored
@@ -565,14 +606,27 @@ const syncOfflineChanges = async () => {
     const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
     if (deletedQuotes.length > 0) {
       console.log(`Syncing ${deletedQuotes.length} deleted quotes to server...`);
-      for (const { quoteId } of deletedQuotes) {
+      for (const deletedItem of deletedQuotes) {
         try {
+          // Handle both old and new format of deleted quotes
+          const quoteId = deletedItem.id || deletedItem.quoteId;
+          
+          if (!quoteId) {
+            console.error('Invalid deleted quote entry:', deletedItem);
+            continue;
+          }
+          
           await api.delete(`/api/quotes/${quoteId}`, {
             headers: { 'x-auth-token': token }
           });
           console.log(`Synced deletion of quote ID: ${quoteId}`);
         } catch (error) {
-          console.error(`Error syncing deleted quote ${quoteId}:`, error);
+          // If 404, consider it already deleted and continue
+          if (error.response && error.response.status === 404) {
+            console.log(`Quote already deleted or not found on server`);
+          } else {
+            console.error(`Error syncing deleted quote:`, error);
+          }
         }
       }
 

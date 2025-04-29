@@ -59,7 +59,7 @@ mongoose.connect(mongoURI, {
 // Function to initialize database with quotes if needed
 async function initializeDatabase() {
   try {
-    const Quote = require('./models/Quote');
+    const Quote = require('./models/Quotes');
     const count = await Quote.countDocuments();
     
     if (count === 0) {
@@ -68,7 +68,7 @@ async function initializeDatabase() {
         // Import quotes from the JSON file
         const fs = require('fs');
         const path = require('path');
-        const quotesPath = path.resolve(__dirname, './finalapp/quotes.json');
+        const quotesPath = path.resolve(__dirname, './client/public/quotes.json');
         
         if (fs.existsSync(quotesPath)) {
           const quotesData = fs.readFileSync(quotesPath, 'utf8');

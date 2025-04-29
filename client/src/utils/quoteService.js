@@ -325,6 +325,9 @@ const addQuote = async (quoteData) => {
  * @returns {Promise} Promise that resolves when the quote is deleted
  */
 const deleteQuote = async (quoteId) => {
+  // Declare quoteToDelete at the top level of the function so it's accessible in all blocks
+  let quoteToDelete = null;
+  
   try {
     // Check for authentication
     const token = localStorage.getItem('token');
@@ -342,7 +345,6 @@ const deleteQuote = async (quoteId) => {
     console.log(`Attempting to delete quote with ID: ${quoteId}`);
 
     // Store the quote before deletion for potential recovery
-    let quoteToDelete = null;
     if (fallbackQuotesData) {
       // Improved matching to handle different ID formats
       quoteToDelete = fallbackQuotesData.find(quote => {

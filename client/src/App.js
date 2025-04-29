@@ -7,9 +7,11 @@ import QuoteList from './components/QuoteList';
 import AddQuoteModal from './components/AddQuoteModal';
 import LoginModal from './components/LoginModal';
 import SuggestionModal from './components/SuggestionModal';
+import ConnectionStatus from './components/ConnectionStatus';
 import Toast from './components/Toast';
 import { useAuth } from './context/AuthContext';
 import { useQuote } from './context/QuoteContext';
+import { startConnectionChecker } from './utils/connectionChecker';
 import './App.css';
 
 function App() {
@@ -25,6 +27,14 @@ function App() {
     
     // Fetch quotes
     fetchQuotes();
+    
+    // Start connection checker to monitor network status
+    const stopChecker = startConnectionChecker();
+    
+    // Clean up connection checker on unmount
+    return () => {
+      stopChecker();
+    };
   }, []);
 
   return (
@@ -40,6 +50,7 @@ function App() {
       <AddQuoteModal />
       <LoginModal />
       <Toast />
+      <ConnectionStatus />
       <ToastContainer theme="dark" position="bottom-center" />
     </div>
   );

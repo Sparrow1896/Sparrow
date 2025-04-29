@@ -1,6 +1,14 @@
 import React, { useState, useEffect, createContext, useReducer, useContext } from 'react';
 import axios from 'axios';
-import { fetchAllQuotes as fetchQuotesService, syncOfflineChanges as syncOfflineChangesService } from '../utils/quoteService';
+import { 
+  fetchAllQuotes as fetchQuotesService, 
+  syncOfflineChanges as syncOfflineChangesService,
+  updateQuote as updateQuoteService,
+  deleteQuote as deleteQuoteService,
+  addQuote as addQuoteService,
+  checkConnection,
+  isOfflineMode
+} from '../utils/quoteService';
 import { toast } from 'react-toastify';
 
 // Create context
@@ -22,7 +30,8 @@ const initialState = {
   isAddQuoteModalOpen: false,
   isSuggestionModalOpen: false,
   suggestions: [],
-  toastMessage: ''
+  toastMessage: '',
+  isOffline: false
 };
 
 // Reducer
@@ -53,6 +62,21 @@ function quoteReducer(state, action) {
       return {
         ...state,
         loading: true
+      };
+    case 'SET_CONNECTION_STATUS':
+      return {
+        ...state,
+        isOffline: action.payload
+      };
+    case 'UPDATE_QUOTE_SUCCESS':
+      return {
+        ...state,
+        loading: false
+      };
+    case 'DELETE_QUOTE_SUCCESS':
+      return {
+        ...state,
+        loading: false
       };
     case 'TOGGLE_FILTER':
       const newFilters = new Set(state.filters.activeFilters);
@@ -126,6 +150,31 @@ function quoteReducer(state, action) {
 export const QuoteProvider = ({ children }) => {
   const [state, dispatch] = useReducer(quoteReducer, initialState);
 
+  // Check connection status periodically
+  useEffect(() => {
+    // Initial check
+    checkConnectionStatus();
+
+    // Set up periodic checks
+    const connectionInterval = setInterval(() => {
+      checkConnectionStatus();
+    }, 30000); // Check every 30 seconds
+
+    return () => {
+      clearInterval(connectionInterval);
+    };
+  }, []);
+
+  // Update connection status
+  const checkConnectionStatus = async () => {
+    try {
+      const isConnected = await checkConnection();
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: !isConnected });
+    } catch (error) {
+      console.error('Error checking connection:', error);
+    }
+  };
+
   // Fetch quotes with fallback to local file if MongoDB is unavailable
   const fetchQuotes = async () => {
     try {
@@ -137,6 +186,9 @@ export const QuoteProvider = ({ children }) => {
       // Log the response to help with debugging
       console.log('Quotes fetched:', data.length);
 
+      // Update connection status based on whether we're using fallback data
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: isOfflineMode() });
+
       // Dispatch success action with the fetched quotes
       dispatch({
         type: 'FETCH_QUOTES_SUCCESS',
@@ -147,7 +199,9 @@ export const QuoteProvider = ({ children }) => {
       processQuotes(data);
       
       // Check if there are any offline changes to sync
-      syncOfflineChanges();
+      if (!isOfflineMode()) {
+        syncOfflineChanges();
+      }
     } catch (err) {
       console.error('Error fetching quotes:', err);
 
@@ -171,9 +225,102 @@ export const QuoteProvider = ({ children }) => {
       if (result.success) {
         // Refresh quotes after successful sync
         fetchQuotes();
+        return result;
       }
+      return result;
     } catch (err) {
       console.error('Error syncing offline changes:', err);
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Add a new quote with offline support
+  const addQuote = async (quoteData) => {
+    try {
+      dispatch({ type: 'SET_LOADING' });
+      
+      // Use the service to add the quote (will handle offline mode internally)
+      const result = await addQuoteService(quoteData);
+      
+      // Update connection status
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: isOfflineMode() });
+      
+      // Dispatch success action with the added quote
+      dispatch({
+        type: 'ADD_QUOTE_SUCCESS',
+        payload: result
+      });
+      
+      // Refresh quotes to ensure we have the latest data
+      fetchQuotes();
+      
+      return result;
+    } catch (err) {
+      console.error('Error adding quote:', err);
+      
+      // Dispatch failure action with the error message
+      dispatch({
+        type: 'ADD_QUOTE_FAILURE',
+        payload: err.message || 'Error adding quote'
+      });
+      
+      // Show error toast
+      toast.error(err.message || 'Error adding quote');
+      throw err;
+    }
+  };
+  
+  // Update an existing quote with offline support
+  const updateQuote = async (quoteId, quoteData) => {
+    try {
+      dispatch({ type: 'SET_LOADING' });
+      
+      // Use the service to update the quote (will handle offline mode internally)
+      const result = await updateQuoteService(quoteId, quoteData);
+      
+      // Update connection status
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: isOfflineMode() });
+      
+      // Dispatch success action
+      dispatch({ type: 'UPDATE_QUOTE_SUCCESS' });
+      
+      // Refresh quotes to ensure we have the latest data
+      fetchQuotes();
+      
+      return result;
+    } catch (err) {
+      console.error('Error updating quote:', err);
+      
+      // Show error toast
+      toast.error(err.message || 'Error updating quote');
+      throw err;
+    }
+  };
+  
+  // Delete a quote with offline support
+  const deleteQuote = async (quoteId) => {
+    try {
+      dispatch({ type: 'SET_LOADING' });
+      
+      // Use the service to delete the quote (will handle offline mode internally)
+      const result = await deleteQuoteService(quoteId);
+      
+      // Update connection status
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: isOfflineMode() });
+      
+      // Dispatch success action
+      dispatch({ type: 'DELETE_QUOTE_SUCCESS' });
+      
+      // Refresh quotes to ensure we have the latest data
+      fetchQuotes();
+      
+      return result;
+    } catch (err) {
+      console.error('Error deleting quote:', err);
+      
+      // Show error toast
+      toast.error(err.message || 'Error deleting quote');
+      throw err;
     }
   };
 
@@ -664,8 +811,8 @@ export const QuoteProvider = ({ children }) => {
     dispatch({ type: 'SET_CURRENT_RESULTS', payload: results });
   };
 
-  // Add a new quote with fallback support
-  const addQuote = async (quoteData) => {
+  // Add a new quote with dynamic import fallback support
+  const addQuoteFallback = async (quoteData) => {
     try {
       dispatch({ type: 'SET_LOADING' });
 
@@ -750,13 +897,17 @@ export const QuoteProvider = ({ children }) => {
         isSuggestionModalOpen: state.isSuggestionModalOpen,
         suggestions: state.suggestions,
         toastMessage: state.toastMessage,
+        isOffline: state.isOffline,
         fetchQuotes,
         toggleFilter,
         setSearchTerm,
         toggleAddQuoteModal,
+        updateQuote,
+        deleteQuote,
+        syncOfflineChanges,
         toggleSuggestionModal,
         selectSuggestion,
-        addQuote,
+        addQuote: addQuoteFallback,
         showToast,
         copyToClipboard,
         initializeAdmin

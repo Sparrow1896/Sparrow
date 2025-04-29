@@ -466,6 +466,20 @@ const deleteQuote = async (quoteId) => {
     // If API fails due to network error, use fallback
     if (error.code === 'ERR_NETWORK') {
       console.log('Network error, using fallback for deleting quote');
+      // Find the quote in fallback data if not already found
+      if (!quoteToDelete && fallbackQuotesData) {
+        quoteToDelete = fallbackQuotesData.find(quote => {
+          // Check main IDs
+          if (quote._id === quoteId || quote.id === quoteId) return true;
+
+          // Check statement IDs if available
+          if (quote.statements && Array.isArray(quote.statements)) {
+            return quote.statements.some(stmt => stmt.id === quoteId || stmt._id === quoteId);
+          }
+
+          return false;
+        });
+      }
       return handleOfflineDeletion(quoteId, quoteToDelete);
     }
     
@@ -713,13 +727,356 @@ const getQuoteCounts = async () => {
   }
 };
 
+/**
+ * Update an existing quote
+ * @param {string} quoteId - The ID of the quote to update
+ * @param {Object} quoteData - The updated quote data
+ * @returns {Promise} Promise that resolves to the updated quote
+ */
+const updateQuote = async (quoteId, quoteData) => {
+  try {
+    // Check for authentication
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('Authentication required to update quotes');
+      throw new Error('Authentication required');
+    }
+
+    // Validate quote ID
+    if (!quoteId) {
+      toast.error('Invalid quote ID');
+      throw new Error('Invalid quote ID');
+    }
+
+    console.log(`Attempting to update quote with ID: ${quoteId}`);
+
+    // If we're already in fallback mode or can't reach the server, go straight to offline update
+    if (usingFallbackData) {
+      return handleOfflineUpdate(quoteId, quoteData);
+    }
+
+    // Try API first
+    try {
+      // First check if we can reach the server
+      try {
+        await api.get('/api/health');
+      } catch (healthError) {
+        console.log('Server unreachable, switching to offline mode');
+        return handleOfflineUpdate(quoteId, quoteData);
+      }
+
+      // Attempt to update the quote
+      const response = await api.put(`/api/quotes/${quoteId}`, quoteData, {
+        headers: {
+          'x-auth-token': token
+        }
+      });
+
+      console.log('Quote updated successfully:', response.data);
+
+      // Also update in local fallback data if it exists
+      if (fallbackQuotesData) {
+        fallbackQuotesData = fallbackQuotesData.map(quote => {
+          if (quote._id === quoteId || quote.id === quoteId) {
+            return { ...quote, ...quoteData };
+          }
+          return quote;
+        });
+
+        // Update the local storage with the updated data
+        localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      }
+
+      toast.success('Quote updated successfully');
+      return response.data;
+    } catch (apiError) {
+      // Enhanced error handling
+      console.error('Error updating quote:', apiError);
+
+      // Handle specific API errors
+      if (apiError.response) {
+        if (apiError.response.status === 404) {
+          throw new Error(`Quote not found with ID: ${quoteId}`);
+        } else if (apiError.response.status === 401) {
+          toast.error('Your session has expired. Please log in again.');
+          localStorage.removeItem('token'); // Clear invalid token
+          throw new Error('Authentication required');
+        } else if (apiError.response.data && apiError.response.data.msg) {
+          // Use the server's error message if available
+          throw new Error(apiError.response.data.msg);
+        }
+      } else if (apiError.code === 'ERR_NETWORK') {
+        // Handle offline mode
+        toast.info('Network unavailable. Operating in offline mode.');
+        return handleOfflineUpdate(quoteId, quoteData);
+      }
+
+      throw apiError;
+    }
+  } catch (error) {
+    // Handle authentication errors
+    if (error.response && error.response.status === 401) {
+      toast.error('Your session has expired. Please log in again.');
+      // Clear the invalid token
+      localStorage.removeItem('token');
+      throw new Error('Authentication expired');
+    }
+
+    // If API fails due to network error, use fallback
+    if (error.code === 'ERR_NETWORK') {
+      console.log('Network error, using fallback for updating quote');
+      return handleOfflineUpdate(quoteId, quoteData);
+    }
+    
+    console.error('Error updating quote ' + quoteId + ':', error);
+    throw error;
+  }
+};
+
+/**
+ * Handle offline update of a quote
+ * @param {string} quoteId - The ID of the quote to update
+ * @param {Object} quoteData - The updated quote data
+ * @returns {Promise} Promise that resolves when the quote is updated locally
+ */
+const handleOfflineUpdate = (quoteId, quoteData) => {
+  usingFallbackData = true;
+  toast.info('Using offline mode: update tracked locally');
+
+  // Find the quote in fallback data
+  let quoteFound = false;
+  if (fallbackQuotesData) {
+    fallbackQuotesData = fallbackQuotesData.map(quote => {
+      if (quote._id === quoteId || quote.id === quoteId) {
+        quoteFound = true;
+        return { ...quote, ...quoteData, updatedAt: new Date().toISOString() };
+      }
+      return quote;
+    });
+
+    // Update the local storage with the updated data
+    localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+  }
+
+  // If quote wasn't found in fallback data, it might be a new offline quote
+  if (!quoteFound) {
+    // Check in offline quotes
+    let offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
+    let offlineQuoteFound = false;
+
+    offlineQuotes = offlineQuotes.map(quote => {
+      if (quote._id === quoteId || quote.id === quoteId) {
+        offlineQuoteFound = true;
+        return { ...quote, ...quoteData, updatedAt: new Date().toISOString() };
+      }
+      return quote;
+    });
+
+    if (offlineQuoteFound) {
+      localStorage.setItem('offlineQuotes', JSON.stringify(offlineQuotes));
+    }
+  }
+
+  // Track the update for later sync
+  let offlineUpdates = JSON.parse(localStorage.getItem('offlineUpdatedQuotes') || '[]');
+  
+  // Check if this quote is already in the updates list
+  const existingUpdateIndex = offlineUpdates.findIndex(update => 
+    update.id === quoteId || update.quoteId === quoteId
+  );
+
+  if (existingUpdateIndex >= 0) {
+    // Update the existing entry
+    offlineUpdates[existingUpdateIndex] = {
+      id: quoteId,
+      updatedAt: new Date().toISOString(),
+      quoteData: quoteData
+    };
+  } else {
+    // Add a new entry
+    offlineUpdates.push({
+      id: quoteId,
+      updatedAt: new Date().toISOString(),
+      quoteData: quoteData
+    });
+  }
+
+  localStorage.setItem('offlineUpdatedQuotes', JSON.stringify(offlineUpdates));
+
+  toast.success('Quote updated locally. Will sync when connection is restored.');
+  return { 
+    success: true, 
+    message: 'Quote updated locally', 
+    id: quoteId,
+    ...quoteData,
+    updatedAt: new Date().toISOString(),
+    offlineUpdated: true
+  };
+};
+
+/**
+ * Check if the app is currently in offline mode
+ * @returns {boolean} True if the app is in offline mode
+ */
+const isOfflineMode = () => {
+  return usingFallbackData;
+};
+
+/**
+ * Check connection to the server
+ * @returns {Promise<boolean>} Promise that resolves to true if connected, false otherwise
+ */
+const checkConnection = async () => {
+  try {
+    await api.get('/api/health');
+    if (usingFallbackData) {
+      // We were offline but now we're back online
+      usingFallbackData = false;
+      toast.success('Connection restored. Syncing changes...');
+      // Trigger sync in the background
+      setTimeout(() => syncOfflineChangesEnhanced(), 100);
+    }
+    return true;
+  } catch (error) {
+    if (!usingFallbackData) {
+      // We just went offline
+      usingFallbackData = true;
+      toast.info('Connection lost. Operating in offline mode.');
+    }
+    return false;
+  }
+};
+
+// Enhanced sync function to include updates
+const syncOfflineChangesEnhanced = async () => {
+  try {
+    // Check if we have a connection
+    try {
+      await api.get('/api/health');
+    } catch (error) {
+      console.log('Still offline, cannot sync changes');
+      return { success: false, message: 'Still offline' };
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return { success: false, message: 'Authentication required for sync' };
+    }
+
+    // Sync new quotes
+    const offlineQuotes = JSON.parse(localStorage.getItem('offlineQuotes') || '[]');
+    if (offlineQuotes.length > 0) {
+      console.log(`Syncing ${offlineQuotes.length} offline quotes to server...`);
+      for (const quote of offlineQuotes) {
+        try {
+          // Remove temporary properties
+          const { _id, offlineCreated, ...quoteData } = quote;
+
+          await api.post('/api/quotes', quoteData, {
+            headers: { 'x-auth-token': token }
+          });
+          console.log(`Synced quote: ${quoteData.ref}`);
+        } catch (error) {
+          console.error('Error syncing offline quote:', error);
+        }
+      }
+
+      // Clear synced quotes
+      localStorage.removeItem('offlineQuotes');
+    }
+
+    // Sync updated quotes
+    const updatedQuotes = JSON.parse(localStorage.getItem('offlineUpdatedQuotes') || '[]');
+    if (updatedQuotes.length > 0) {
+      console.log(`Syncing ${updatedQuotes.length} updated quotes to server...`);
+      for (const updateItem of updatedQuotes) {
+        try {
+          const quoteId = updateItem.id || updateItem.quoteId;
+          
+          if (!quoteId) {
+            console.error('Invalid updated quote entry:', updateItem);
+            continue;
+          }
+          
+          await api.put(`/api/quotes/${quoteId}`, updateItem.quoteData, {
+            headers: { 'x-auth-token': token }
+          });
+          console.log(`Synced update of quote ID: ${quoteId}`);
+        } catch (error) {
+          if (error.response && error.response.status === 404) {
+            console.log(`Quote not found on server for update`);
+          } else {
+            console.error(`Error syncing updated quote:`, error);
+          }
+        }
+      }
+
+      // Clear synced updates
+      localStorage.removeItem('offlineUpdatedQuotes');
+    }
+
+    // Sync deleted quotes
+    const deletedQuotes = JSON.parse(localStorage.getItem('offlineDeletedQuotes') || '[]');
+    if (deletedQuotes.length > 0) {
+      console.log(`Syncing ${deletedQuotes.length} deleted quotes to server...`);
+      for (const deletedItem of deletedQuotes) {
+        try {
+          // Handle both old and new format of deleted quotes
+          const quoteId = deletedItem.id || deletedItem.quoteId;
+          
+          if (!quoteId) {
+            console.error('Invalid deleted quote entry:', deletedItem);
+            continue;
+          }
+          
+          await api.delete(`/api/quotes/${quoteId}`, {
+            headers: { 'x-auth-token': token }
+          });
+          console.log(`Synced deletion of quote ID: ${quoteId}`);
+        } catch (error) {
+          // If 404, consider it already deleted and continue
+          if (error.response && error.response.status === 404) {
+            console.log(`Quote already deleted or not found on server`);
+          } else {
+            console.error(`Error syncing deleted quote:`, error);
+          }
+        }
+      }
+
+      // Clear synced deletions
+      localStorage.removeItem('offlineDeletedQuotes');
+    }
+
+    // Refresh fallback data after sync
+    try {
+      const response = await api.get('/api/quotes');
+      fallbackQuotesData = response.data;
+      localStorage.setItem('fallbackQuotesData', JSON.stringify(fallbackQuotesData));
+      console.log('Updated local cache with latest data from server');
+    } catch (error) {
+      console.error('Error refreshing local cache:', error);
+    }
+
+    usingFallbackData = false;
+    toast.success('Offline changes synced successfully');
+    return { success: true, message: 'Sync completed' };
+  } catch (error) {
+    console.error('Error syncing offline changes:', error);
+    return { success: false, message: error.message };
+  }
+};
+
 // Export as named exports to avoid circular dependency issues
 export {
   fetchAllQuotes,
   fetchQuotesByCollection,
   searchQuotes,
   addQuote,
+  updateQuote,
   deleteQuote,
   syncOfflineChanges,
-  getQuoteCounts
+  syncOfflineChangesEnhanced,
+  getQuoteCounts,
+  isOfflineMode,
+  checkConnection
 };

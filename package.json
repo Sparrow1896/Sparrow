@@ -9,8 +9,9 @@
     "client": "cd client && npm start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client-install": "cd client && npm install",
-    "build": "cd client && npm run build",
-    "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm run client-install && npm run build",
+    "client-build": "cd client && npm run build",
+    "build": "npm run client-install && npm run client-build",
+    "heroku-postbuild": "npm run build",
     "import-quotes": "node scripts/importQuotes.js"
   },
   "keywords": [

@@ -2,7 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
+
+// Set environment variables
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Import User model
 const User = require('./models/User');
@@ -18,19 +22,29 @@ const app = express();
 app.use(express.json());
 
 // Configure CORS properly - this should be before routes
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5501', 'http://127.0.0.1:5501'],
+const corsOptions = {
+  origin: NODE_ENV === 'production' 
+    ? process.env.CLIENT_URL || 'https://yourdomain.com' 
+    : ['http://localhost:3000', 'http://localhost:5501', 'http://127.0.0.1:5501'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Add OPTIONS handling for preflight requests
 app.options('*', cors());
 
 // Connect to MongoDB
 const mongoURI = process.env.MONGODB_URI;
-console.log('Attempting to connect to MongoDB at:', mongoURI);
+
+// Only log connection attempt in development, not the actual URI for security
+if (NODE_ENV === 'development') {
+  console.log('Attempting to connect to MongoDB...');
+} else {
+  console.log('Attempting to connect to MongoDB in production mode');
+}
 
 // Add connection options to handle SSL issues
 mongoose.connect(mongoURI, {
@@ -91,7 +105,12 @@ async function initializeDatabase() {
 
 // Add health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'API is running' });
+  res.json({ 
+    status: 'ok', 
+    message: 'API is running',
+    environment: NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Use Routes
@@ -99,13 +118,24 @@ app.use('/api/quotes', quotesRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/auth', authRoutes);
 
-// Serve static assets if in production
-if (process.env.NODE_ENV === 'production') {
+// Serve static assets in production
+if (NODE_ENV === 'production') {
+  // Set static folder
   app.use(express.static('client/build'));
+
+  // Any route that is not an API route should be handled by React
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
   });
 }
+
+// Legacy code - removed as it's replaced by the above block
+// if (process.env.NODE_ENV === 'production') {
+//   app.use(express.static('client/build'));
+//   app.get('*', (req, res) => {
+//     res.sendFile(path.resolve(__dirname, 'client', 'build', 'index.html'));
+//   });
+// }
 
 const PORT = process.env.PORT || 5000;
 

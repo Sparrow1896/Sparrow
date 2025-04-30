@@ -1,7 +1,7 @@
-# Quotes App
+# Prabhupada's Sparrow
 
 ## Overview
-A full-featured application for managing and displaying quotes with support for authentication, offline functionality, and responsive design. The app allows authorized users to add, delete, and manage quotes while providing a seamless experience for all users to search and view quotes.
+A professional MERN stack application for managing and displaying quotes from Srila Prabhupada with support for authentication, offline functionality, and responsive design. The app allows authorized users to add, delete, and manage quotes while providing a seamless experience for all users to search and view quotes.
 
 ## Features
 
@@ -48,11 +48,19 @@ A full-featured application for managing and displaying quotes with support for 
 - Environment variables configured
 
 ### Environment Setup
-Create a `.env` file in the root directory with the following variables:
+Create a `.env` file in the root directory based on the provided `.env.example` file:
 ```
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret_key
 PORT=5000
+NODE_ENV=production
+CLIENT_URL=https://yourdomain.com
+TOKEN_EXPIRATION=86400
+```
+
+Create a `.env` file in the client directory based on the provided `.env.example` file:
+```
+REACT_APP_API_URL=https://your-api-domain.com
 ```
 
 ### Installation

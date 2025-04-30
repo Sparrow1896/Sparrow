@@ -1,19 +1,23 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+// Set token expiration from environment variable or default to 1 day
+const TOKEN_EXPIRATION = process.env.TOKEN_EXPIRATION || 86400; // in seconds
+
 /**
  * Authentication middleware
  * Verifies JWT token and adds user data to request
  */
 function auth(req, res, next) {
-  // Enhanced logging for debugging auth issues
-  console.log(`Auth middleware called for ${req.method} ${req.originalUrl}`);
+  // Only log auth attempts in development environment
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`Auth middleware called for ${req.method} ${req.originalUrl}`);
+  }
   
   // Get token from header, query, or body for flexibility
   const token = req.header('x-auth-token') || 
                 req.header('Authorization')?.replace('Bearer ', '') ||
-                req.query.token || 
-                (req.body && req.body.token);
+                (process.env.NODE_ENV === 'development' ? (req.query.token || (req.body && req.body.token)) : null);
 
   // Check for token
   if (!token) {

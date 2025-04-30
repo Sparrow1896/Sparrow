@@ -8,9 +8,29 @@ const Quote = require('../models/Quote');
 
 // MongoDB connection
 const mongoURI = process.env.MONGODB_URI;
-console.log('Connecting to MongoDB at:', mongoURI);
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-mongoose.connect(mongoURI)
+// Only log connection attempt in development, not the actual URI for security
+if (NODE_ENV === 'development') {
+  console.log('Attempting to connect to MongoDB...');
+} else {
+  console.log('Attempting to connect to MongoDB in production mode');
+}
+
+// Add connection options to match server.js
+mongoose.connect(mongoURI, {
+  serverApi: {
+    version: '1',
+    strict: true,
+    deprecationErrors: true
+  },
+  ssl: true,
+  tls: true,
+  tlsAllowInvalidCertificates: true,
+  retryWrites: true,
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
   .then(() => {
     console.log('MongoDB Connected Successfully');
     importQuotes();
